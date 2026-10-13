@@ -1,0 +1,3 @@
+CFBundleDisplayName = "AetherKey 极速输入法";
+CFBundleName = "AetherKey";
+"com.aethernative.inputmethod.AetherKey.Hans" = "AetherKey 拼音 (简体中文)";

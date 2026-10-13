@@ -58,10 +58,13 @@ public final class VModeCalculator: Sendable {
     }
     
     private func evaluateMath(_ expr: String) -> String? {
-        let sanitized = expr
+        var sanitized = expr
             .replacingOccurrences(of: "×", with: "*")
             .replacingOccurrences(of: "÷", with: "/")
             .replacingOccurrences(of: "^", with: "**")
+        
+        // Promote integer division to float division (e.g. 10/4 -> 10.0/4 -> 2.5)
+        sanitized = sanitized.replacingOccurrences(of: "(\\d+)(?=[/])", with: "$1.0", options: .regularExpression)
         
         let validChars = CharacterSet(charactersIn: "0123456789+-*/.()% ")
         guard sanitized.unicodeScalars.allSatisfy({ validChars.contains($0) }) else {

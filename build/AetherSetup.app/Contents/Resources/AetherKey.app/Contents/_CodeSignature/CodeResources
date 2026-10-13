@@ -3,9 +3,65 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/en.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			CDkXFFB05gZ0+a6UhqYIiS2L6bs=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/zh-Hans.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			+fxYjk4hfHghxzuL7XNnWB3zT5g=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/zh_CN.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			+fxYjk4hfHghxzuL7XNnWB3zT5g=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/en.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			hEdISPYe4RSy1EoKKzZeaWaeIN7fFr0o5ulFcq8iQU8=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/zh-Hans.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			M7JWdke1fMSh6s59NWgqwzK7/IZg2K3vdmGQmY+vc4s=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/zh_CN.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			M7JWdke1fMSh6s59NWgqwzK7/IZg2K3vdmGQmY+vc4s=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>

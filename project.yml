@@ -13,10 +13,13 @@ targets:
     platform: macOS
     sources:
       - Sources/AetherKey
-    info:
-      path: Resources/Info.plist
+      - Resources/zh-Hans.lproj
+      - Resources/zh_CN.lproj
+      - Resources/en.lproj
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherKey
+      GENERATE_INFOPLIST_FILE: "NO"
+      INFOPLIST_FILE: Resources/Info.plist
       CODE_SIGN_IDENTITY: "-"
       CODE_SIGNING_REQUIRED: "NO"
       AD_HOC_CODE_SIGNING_ALLOWED: "YES"

@@ -51,6 +51,7 @@
 		0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AetherKeyTests.swift; sourceTree = "<group>"; };
 		1407D83BA495C9E583A2DEAE /* CandidateListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateListView.swift; sourceTree = "<group>"; };
 		2DF6B1721492EB19FABD5CAD /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		3593B8400C6BB6F74B37B267 /* zh_CN.lproj */ = {isa = PBXFileReference; path = zh_CN.lproj; sourceTree = "<group>"; };
 		382253CA7A194C82F58A9921 /* ContextDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDetector.swift; sourceTree = "<group>"; };
 		3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassVisualView.swift; sourceTree = "<group>"; };
 		3F895226685FBA7904EC9634 /* PinyinEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinyinEngine.swift; sourceTree = "<group>"; };
@@ -67,6 +68,8 @@
 		E3F59631917A3377A23C34E8 /* VModeCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VModeCalculator.swift; sourceTree = "<group>"; };
 		E831E89215765786C02456D6 /* AetherKeyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AetherKeyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC9412423EE20C4365CABC81 /* AetherSetup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherSetup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EE87C8A4DEC7BA801BDB7DF9 /* en.lproj */ = {isa = PBXFileReference; path = en.lproj; sourceTree = "<group>"; };
+		EFE5B22F9F2D8B23A8261936 /* zh-Hans.lproj */ = {isa = PBXFileReference; path = "zh-Hans.lproj"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -133,11 +136,22 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		91C51081ABF0053EF3750E4E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				EE87C8A4DEC7BA801BDB7DF9 /* en.lproj */,
+				3593B8400C6BB6F74B37B267 /* zh_CN.lproj */,
+				EFE5B22F9F2D8B23A8261936 /* zh-Hans.lproj */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		A322943F01F3E23F8A8DF84E = {
 			isa = PBXGroup;
 			children = (
 				2EC2909AF5A5C2CA8EAC9577 /* AetherKey */,
 				0856627FA3AAFA6B4E805924 /* AetherSetup */,
+				91C51081ABF0053EF3750E4E /* Resources */,
 				3A77C40FDB36EECA6A44FF8A /* Tests */,
 				6CD5A439FBAC9ADBE21DEB9F /* Products */,
 			);
@@ -338,6 +352,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -479,6 +494,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
