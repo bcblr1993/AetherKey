@@ -5,7 +5,9 @@
 	<key>BuildMachineOSBuild</key>
 	<string>26A434</string>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
+	<string>zh_CN</string>
+	<key>CFBundleDisplayName</key>
+	<string>AetherKey</string>
 	<key>CFBundleExecutable</key>
 	<string>AetherKey</string>
 	<key>CFBundleIdentifier</key>
@@ -17,13 +19,30 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.0.0</string>
 	<key>CFBundleSupportedPlatforms</key>
 	<array>
 		<string>MacOSX</string>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ComponentInputModeDict</key>
+	<dict>
+		<key>tsInputModeListKey</key>
+		<dict>
+			<key>com.aethernative.inputmethod.AetherKey.pinyin</key>
+			<dict>
+				<key>tsInputModeCanUseDynamicItemsKey</key>
+				<true/>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModePrimaryInScriptKey</key>
+				<true/>
+				<key>tsInputModeScriptKey</key>
+				<string>smSimpChinese</string>
+			</dict>
+		</dict>
+	</dict>
 	<key>DTCompiler</key>
 	<string>com.apple.compilers.llvm.clang.1_0</string>
 	<key>DTPlatformBuild</key>
@@ -40,7 +59,22 @@
 	<string>2700</string>
 	<key>DTXcodeBuild</key>
 	<string>27A266a</string>
+	<key>InputMethodConnectionName</key>
+	<string>AetherKey_1_Connection</string>
+	<key>InputMethodServerControllerClass</key>
+	<string>AetherInputController</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>tsInputMethodCharacterRepertoireKey</key>
+	<array>
+		<string>Hans</string>
+		<string>Latn</string>
+	</array>
+	<key>tsInputMethodIconFileKey</key>
+	<string></string>
 </dict>
 </plist>
