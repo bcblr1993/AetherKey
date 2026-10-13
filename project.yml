@@ -1,0 +1,51 @@
+name: AetherKey
+options:
+  bundleIdPrefix: com.aethernative.inputmethod
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  SWIFT_VERSION: "6.0"
+  ARCHS: "arm64"
+targets:
+  AetherKey:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/AetherKey
+    info:
+      path: Resources/Info.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherKey
+      CODE_SIGN_IDENTITY: "-"
+      CODE_SIGNING_REQUIRED: "NO"
+      AD_HOC_CODE_SIGNING_ALLOWED: "YES"
+      ENABLE_HARDENED_RUNTIME: "NO"
+      ENABLE_TESTABILITY: "YES"
+
+  AetherKeyTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: AetherKey
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherKeyTests
+      GENERATE_INFOPLIST_FILE: "YES"
+      CODE_SIGN_IDENTITY: "-"
+      CODE_SIGNING_REQUIRED: "NO"
+
+  AetherPreview:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/AetherPreview
+      - path: Sources/AetherKey/Model
+      - path: Sources/AetherKey/Engine
+      - path: Sources/AetherKey/UI
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherPreview
+      GENERATE_INFOPLIST_FILE: "YES"
+      CODE_SIGN_IDENTITY: "-"
+      CODE_SIGNING_REQUIRED: "NO"

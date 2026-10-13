@@ -1,0 +1,579 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06771395B44DC6634BB76C29 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
+		10D8ABA9CDE28FC66D98346B /* InputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3586CE699373825D1868DCB /* InputController.swift */; };
+		1934558C888E84F3337E18AF /* ContextDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382253CA7A194C82F58A9921 /* ContextDetector.swift */; };
+		1A6D17EF3A103FEF875CF950 /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
+		1F7C55DA3DA3F8A33D5CA62F /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */; };
+		24106657FD9FBF0340966B70 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
+		28E347DDC0A1C483967BA98A /* LiquidGlassVisualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */; };
+		3F30306A3D1E37F075EDF7FB /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
+		565B55F61F65BECBC364BCF2 /* AetherKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */; };
+		5DB6DF26D4A476FE31AED719 /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
+		6BF90C39606D59459DDB34E8 /* LiquidGlassVisualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */; };
+		74F799648B031D143BD16281 /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */; };
+		834B5F53A024BE53A8C714A8 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
+		8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
+		A2BF56221D8B98A878BE98A6 /* ContextDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382253CA7A194C82F58A9921 /* ContextDetector.swift */; };
+		A4F9BA592AFC874BB2954C0E /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
+		A5582D096C057A53B0E2B89D /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
+		AC0BF660EFF8DCF5A9C9FA3C /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
+		B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D9A3A573D9A92F43E30230 /* main.swift */; };
+		CA377C10FBDA9ED80D4B2A4D /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
+		CC969BE7443C08495FCC7953 /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
+		D2D0AE14EC2C30A7E83F4B78 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */; };
+		DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
+		E46F27A4D01802BE9DA11A10 /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
+		F77D65EE9966481D63D5A580 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3376C0677CAD0472FDCDA745 /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		DC7993D2C03A614AFB12ACDD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E0AB2EF55A33B2260781C5D3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 115C191D906E1CAA07B77561;
+			remoteInfo = AetherKey;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0270A81FA511D79F5E3B244F /* CandidatePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidatePanel.swift; sourceTree = "<group>"; };
+		0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AetherKeyTests.swift; sourceTree = "<group>"; };
+		1407D83BA495C9E583A2DEAE /* CandidateListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateListView.swift; sourceTree = "<group>"; };
+		3376C0677CAD0472FDCDA745 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		382253CA7A194C82F58A9921 /* ContextDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDetector.swift; sourceTree = "<group>"; };
+		3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassVisualView.swift; sourceTree = "<group>"; };
+		3F895226685FBA7904EC9634 /* PinyinEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinyinEngine.swift; sourceTree = "<group>"; };
+		508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMode.swift; sourceTree = "<group>"; };
+		5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Candidate.swift; sourceTree = "<group>"; };
+		6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		76D9A3A573D9A92F43E30230 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPunctuation.swift; sourceTree = "<group>"; };
+		A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanguSpacing.swift; sourceTree = "<group>"; };
+		AD2614B5A918C8ABE2A4431B /* AetherPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D3586CE699373825D1868DCB /* InputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputController.swift; sourceTree = "<group>"; };
+		D7810FAE5C664BE62764B351 /* AetherKey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherKey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3F59631917A3377A23C34E8 /* VModeCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VModeCalculator.swift; sourceTree = "<group>"; };
+		E831E89215765786C02456D6 /* AetherKeyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AetherKeyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1A294146C7D29E2661EAA859 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				382253CA7A194C82F58A9921 /* ContextDetector.swift */,
+				A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */,
+				3F895226685FBA7904EC9634 /* PinyinEngine.swift */,
+				7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */,
+				E3F59631917A3377A23C34E8 /* VModeCalculator.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		23C139FA86961B64A1433514 /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				D3586CE699373825D1868DCB /* InputController.swift */,
+			);
+			path = Controller;
+			sourceTree = "<group>";
+		};
+		2EC2909AF5A5C2CA8EAC9577 /* AetherKey */ = {
+			isa = PBXGroup;
+			children = (
+				6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */,
+				76D9A3A573D9A92F43E30230 /* main.swift */,
+				23C139FA86961B64A1433514 /* Controller */,
+				1A294146C7D29E2661EAA859 /* Engine */,
+				D3EE6E1B12F8F82E9ED34FC3 /* Model */,
+				F79F63AA566B5CA42650F874 /* UI */,
+			);
+			name = AetherKey;
+			path = Sources/AetherKey;
+			sourceTree = "<group>";
+		};
+		3A77C40FDB36EECA6A44FF8A /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		6CD5A439FBAC9ADBE21DEB9F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D7810FAE5C664BE62764B351 /* AetherKey.app */,
+				E831E89215765786C02456D6 /* AetherKeyTests.xctest */,
+				AD2614B5A918C8ABE2A4431B /* AetherPreview.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A322943F01F3E23F8A8DF84E = {
+			isa = PBXGroup;
+			children = (
+				2EC2909AF5A5C2CA8EAC9577 /* AetherKey */,
+				FD2E4779719B3D7E1639CAD1 /* AetherPreview */,
+				3A77C40FDB36EECA6A44FF8A /* Tests */,
+				6CD5A439FBAC9ADBE21DEB9F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D3EE6E1B12F8F82E9ED34FC3 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */,
+				508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		F79F63AA566B5CA42650F874 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				1407D83BA495C9E583A2DEAE /* CandidateListView.swift */,
+				0270A81FA511D79F5E3B244F /* CandidatePanel.swift */,
+				3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		FD2E4779719B3D7E1639CAD1 /* AetherPreview */ = {
+			isa = PBXGroup;
+			children = (
+				3376C0677CAD0472FDCDA745 /* main.swift */,
+			);
+			name = AetherPreview;
+			path = Sources/AetherPreview;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		115C191D906E1CAA07B77561 /* AetherKey */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D41CC9463E530B60181151CC /* Build configuration list for PBXNativeTarget "AetherKey" */;
+			buildPhases = (
+				820F8B3605A424144EA6DCAE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AetherKey;
+			packageProductDependencies = (
+			);
+			productName = AetherKey;
+			productReference = D7810FAE5C664BE62764B351 /* AetherKey.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2A8FB6FA35BD69D105373247 /* AetherKeyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 93D040FCAFC8C82B9777AD31 /* Build configuration list for PBXNativeTarget "AetherKeyTests" */;
+			buildPhases = (
+				79A3219E615D71292002AA10 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				174DC812F1AA6570EB4C10C9 /* PBXTargetDependency */,
+			);
+			name = AetherKeyTests;
+			packageProductDependencies = (
+			);
+			productName = AetherKeyTests;
+			productReference = E831E89215765786C02456D6 /* AetherKeyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		9CFC68723255B073D246E381 /* AetherPreview */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9C6989A1CD6B78A3723949CB /* Build configuration list for PBXNativeTarget "AetherPreview" */;
+			buildPhases = (
+				AC382FDB83C44048391C6EE0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AetherPreview;
+			packageProductDependencies = (
+			);
+			productName = AetherPreview;
+			productReference = AD2614B5A918C8ABE2A4431B /* AetherPreview.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E0AB2EF55A33B2260781C5D3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = E0F4A66D17BEF32E8DDBBC1E /* Build configuration list for PBXProject "AetherKey" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A322943F01F3E23F8A8DF84E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6CD5A439FBAC9ADBE21DEB9F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				115C191D906E1CAA07B77561 /* AetherKey */,
+				2A8FB6FA35BD69D105373247 /* AetherKeyTests */,
+				9CFC68723255B073D246E381 /* AetherPreview */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		79A3219E615D71292002AA10 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				565B55F61F65BECBC364BCF2 /* AetherKeyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		820F8B3605A424144EA6DCAE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D2D0AE14EC2C30A7E83F4B78 /* AppDelegate.swift in Sources */,
+				1F7C55DA3DA3F8A33D5CA62F /* Candidate.swift in Sources */,
+				A5582D096C057A53B0E2B89D /* CandidateListView.swift in Sources */,
+				CC969BE7443C08495FCC7953 /* CandidatePanel.swift in Sources */,
+				1934558C888E84F3337E18AF /* ContextDetector.swift in Sources */,
+				10D8ABA9CDE28FC66D98346B /* InputController.swift in Sources */,
+				24106657FD9FBF0340966B70 /* InputMode.swift in Sources */,
+				28E347DDC0A1C483967BA98A /* LiquidGlassVisualView.swift in Sources */,
+				CA377C10FBDA9ED80D4B2A4D /* PanguSpacing.swift in Sources */,
+				E46F27A4D01802BE9DA11A10 /* PinyinEngine.swift in Sources */,
+				DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */,
+				8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */,
+				B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC382FDB83C44048391C6EE0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				74F799648B031D143BD16281 /* Candidate.swift in Sources */,
+				5DB6DF26D4A476FE31AED719 /* CandidateListView.swift in Sources */,
+				AC0BF660EFF8DCF5A9C9FA3C /* CandidatePanel.swift in Sources */,
+				A2BF56221D8B98A878BE98A6 /* ContextDetector.swift in Sources */,
+				06771395B44DC6634BB76C29 /* InputMode.swift in Sources */,
+				6BF90C39606D59459DDB34E8 /* LiquidGlassVisualView.swift in Sources */,
+				1A6D17EF3A103FEF875CF950 /* PanguSpacing.swift in Sources */,
+				A4F9BA592AFC874BB2954C0E /* PinyinEngine.swift in Sources */,
+				3F30306A3D1E37F075EDF7FB /* SmartPunctuation.swift in Sources */,
+				834B5F53A024BE53A8C714A8 /* VModeCalculator.swift in Sources */,
+				F77D65EE9966481D63D5A580 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		174DC812F1AA6570EB4C10C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 115C191D906E1CAA07B77561 /* AetherKey */;
+			targetProxy = DC7993D2C03A614AFB12ACDD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0C422D65531BB5DC82E5C9A6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherKeyTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AetherKey.app/Contents/MacOS/AetherKey";
+			};
+			name = Debug;
+		};
+		3CD5C2A91BFF082CA73CBA10 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				AD_HOC_CODE_SIGNING_ALLOWED = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_TESTABILITY = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherKey;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		3FE39C864032DA49AFA043AD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		402FE025CD9FFA1C58676FD8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherPreview;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		41401067F8FA69A5598B2421 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		500ACBBB215F2C374C614511 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				AD_HOC_CODE_SIGNING_ALLOWED = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_TESTABILITY = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherKey;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		776617C54108F190E62D74E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherPreview;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		AF329B7512F905710645D476 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherKeyTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AetherKey.app/Contents/MacOS/AetherKey";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		93D040FCAFC8C82B9777AD31 /* Build configuration list for PBXNativeTarget "AetherKeyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0C422D65531BB5DC82E5C9A6 /* Debug */,
+				AF329B7512F905710645D476 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9C6989A1CD6B78A3723949CB /* Build configuration list for PBXNativeTarget "AetherPreview" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				402FE025CD9FFA1C58676FD8 /* Debug */,
+				776617C54108F190E62D74E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D41CC9463E530B60181151CC /* Build configuration list for PBXNativeTarget "AetherKey" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3CD5C2A91BFF082CA73CBA10 /* Debug */,
+				500ACBBB215F2C374C614511 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E0F4A66D17BEF32E8DDBBC1E /* Build configuration list for PBXProject "AetherKey" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41401067F8FA69A5598B2421 /* Debug */,
+				3FE39C864032DA49AFA043AD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E0AB2EF55A33B2260781C5D3 /* Project object */;
+}
