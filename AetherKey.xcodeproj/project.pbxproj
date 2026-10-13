@@ -7,31 +7,33 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		06771395B44DC6634BB76C29 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
+		0A5B2089BA5F8412C861302D /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
+		0A8A8F0D348B79FF5B5B12D4 /* SetupWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6890B4DCEA40AED6210BB3AA /* SetupWizardView.swift */; };
 		10D8ABA9CDE28FC66D98346B /* InputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3586CE699373825D1868DCB /* InputController.swift */; };
+		12A7D3FD2439224149F214CC /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
 		1934558C888E84F3337E18AF /* ContextDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382253CA7A194C82F58A9921 /* ContextDetector.swift */; };
-		1A6D17EF3A103FEF875CF950 /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
 		1F7C55DA3DA3F8A33D5CA62F /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */; };
 		24106657FD9FBF0340966B70 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
 		28E347DDC0A1C483967BA98A /* LiquidGlassVisualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */; };
-		3F30306A3D1E37F075EDF7FB /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
+		3CA54221166E653153030A1B /* LiquidGlassVisualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */; };
 		565B55F61F65BECBC364BCF2 /* AetherKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */; };
-		5DB6DF26D4A476FE31AED719 /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
-		6BF90C39606D59459DDB34E8 /* LiquidGlassVisualView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */; };
-		74F799648B031D143BD16281 /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */; };
-		834B5F53A024BE53A8C714A8 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
+		56F6A8AD368B6B7652D23628 /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
+		6BB2F3222ED1E5BC9244F8C2 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF6B1721492EB19FABD5CAD /* main.swift */; };
+		737922C68989A3A1D3676E59 /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
+		832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
+		8E9A406086127F81882360CA /* InstallationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */; };
 		8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
-		A2BF56221D8B98A878BE98A6 /* ContextDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382253CA7A194C82F58A9921 /* ContextDetector.swift */; };
-		A4F9BA592AFC874BB2954C0E /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
+		9879D393B4773F5BE939F834 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		A5582D096C057A53B0E2B89D /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
-		AC0BF660EFF8DCF5A9C9FA3C /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
 		B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D9A3A573D9A92F43E30230 /* main.swift */; };
+		C5CA4C69355871AA81C868ED /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
 		CA377C10FBDA9ED80D4B2A4D /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
 		CC969BE7443C08495FCC7953 /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
 		D2D0AE14EC2C30A7E83F4B78 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */; };
 		DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		E46F27A4D01802BE9DA11A10 /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
-		F77D65EE9966481D63D5A580 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3376C0677CAD0472FDCDA745 /* main.swift */; };
+		F3CB21530F7487BFF881986B /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */; };
+		FBCAC0226790DA60C5B6C008 /* ContextDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382253CA7A194C82F58A9921 /* ContextDetector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,24 +50,37 @@
 		0270A81FA511D79F5E3B244F /* CandidatePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidatePanel.swift; sourceTree = "<group>"; };
 		0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AetherKeyTests.swift; sourceTree = "<group>"; };
 		1407D83BA495C9E583A2DEAE /* CandidateListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateListView.swift; sourceTree = "<group>"; };
-		3376C0677CAD0472FDCDA745 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		2DF6B1721492EB19FABD5CAD /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		382253CA7A194C82F58A9921 /* ContextDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDetector.swift; sourceTree = "<group>"; };
 		3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassVisualView.swift; sourceTree = "<group>"; };
 		3F895226685FBA7904EC9634 /* PinyinEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinyinEngine.swift; sourceTree = "<group>"; };
 		508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMode.swift; sourceTree = "<group>"; };
 		5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Candidate.swift; sourceTree = "<group>"; };
+		6890B4DCEA40AED6210BB3AA /* SetupWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupWizardView.swift; sourceTree = "<group>"; };
 		6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		76D9A3A573D9A92F43E30230 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPunctuation.swift; sourceTree = "<group>"; };
 		A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanguSpacing.swift; sourceTree = "<group>"; };
-		AD2614B5A918C8ABE2A4431B /* AetherPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationManager.swift; sourceTree = "<group>"; };
 		D3586CE699373825D1868DCB /* InputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputController.swift; sourceTree = "<group>"; };
 		D7810FAE5C664BE62764B351 /* AetherKey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherKey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3F59631917A3377A23C34E8 /* VModeCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VModeCalculator.swift; sourceTree = "<group>"; };
 		E831E89215765786C02456D6 /* AetherKeyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AetherKeyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC9412423EE20C4365CABC81 /* AetherSetup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherSetup.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		0856627FA3AAFA6B4E805924 /* AetherSetup */ = {
+			isa = PBXGroup;
+			children = (
+				B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */,
+				2DF6B1721492EB19FABD5CAD /* main.swift */,
+				6890B4DCEA40AED6210BB3AA /* SetupWizardView.swift */,
+			);
+			name = AetherSetup;
+			path = Sources/AetherSetup;
+			sourceTree = "<group>";
+		};
 		1A294146C7D29E2661EAA859 /* Engine */ = {
 			isa = PBXGroup;
 			children = (
@@ -113,7 +128,7 @@
 			children = (
 				D7810FAE5C664BE62764B351 /* AetherKey.app */,
 				E831E89215765786C02456D6 /* AetherKeyTests.xctest */,
-				AD2614B5A918C8ABE2A4431B /* AetherPreview.app */,
+				EC9412423EE20C4365CABC81 /* AetherSetup.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -122,7 +137,7 @@
 			isa = PBXGroup;
 			children = (
 				2EC2909AF5A5C2CA8EAC9577 /* AetherKey */,
-				FD2E4779719B3D7E1639CAD1 /* AetherPreview */,
+				0856627FA3AAFA6B4E805924 /* AetherSetup */,
 				3A77C40FDB36EECA6A44FF8A /* Tests */,
 				6CD5A439FBAC9ADBE21DEB9F /* Products */,
 			);
@@ -145,15 +160,6 @@
 				3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */,
 			);
 			path = UI;
-			sourceTree = "<group>";
-		};
-		FD2E4779719B3D7E1639CAD1 /* AetherPreview */ = {
-			isa = PBXGroup;
-			children = (
-				3376C0677CAD0472FDCDA745 /* main.swift */,
-			);
-			name = AetherPreview;
-			path = Sources/AetherPreview;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -194,21 +200,21 @@
 			productReference = E831E89215765786C02456D6 /* AetherKeyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		9CFC68723255B073D246E381 /* AetherPreview */ = {
+		A08C72B7EA97D7B52296CFB6 /* AetherSetup */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9C6989A1CD6B78A3723949CB /* Build configuration list for PBXNativeTarget "AetherPreview" */;
+			buildConfigurationList = C869492D873B1887C01ACCC1 /* Build configuration list for PBXNativeTarget "AetherSetup" */;
 			buildPhases = (
-				AC382FDB83C44048391C6EE0 /* Sources */,
+				B10D02E95F41C68F240AAC4F /* Sources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = AetherPreview;
+			name = AetherSetup;
 			packageProductDependencies = (
 			);
-			productName = AetherPreview;
-			productReference = AD2614B5A918C8ABE2A4431B /* AetherPreview.app */;
+			productName = AetherSetup;
+			productReference = EC9412423EE20C4365CABC81 /* AetherSetup.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -238,7 +244,7 @@
 			targets = (
 				115C191D906E1CAA07B77561 /* AetherKey */,
 				2A8FB6FA35BD69D105373247 /* AetherKeyTests */,
-				9CFC68723255B073D246E381 /* AetherPreview */,
+				A08C72B7EA97D7B52296CFB6 /* AetherSetup */,
 			);
 		};
 /* End PBXProject section */
@@ -272,21 +278,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC382FDB83C44048391C6EE0 /* Sources */ = {
+		B10D02E95F41C68F240AAC4F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				74F799648B031D143BD16281 /* Candidate.swift in Sources */,
-				5DB6DF26D4A476FE31AED719 /* CandidateListView.swift in Sources */,
-				AC0BF660EFF8DCF5A9C9FA3C /* CandidatePanel.swift in Sources */,
-				A2BF56221D8B98A878BE98A6 /* ContextDetector.swift in Sources */,
-				06771395B44DC6634BB76C29 /* InputMode.swift in Sources */,
-				6BF90C39606D59459DDB34E8 /* LiquidGlassVisualView.swift in Sources */,
-				1A6D17EF3A103FEF875CF950 /* PanguSpacing.swift in Sources */,
-				A4F9BA592AFC874BB2954C0E /* PinyinEngine.swift in Sources */,
-				3F30306A3D1E37F075EDF7FB /* SmartPunctuation.swift in Sources */,
-				834B5F53A024BE53A8C714A8 /* VModeCalculator.swift in Sources */,
-				F77D65EE9966481D63D5A580 /* main.swift in Sources */,
+				F3CB21530F7487BFF881986B /* Candidate.swift in Sources */,
+				0A5B2089BA5F8412C861302D /* CandidateListView.swift in Sources */,
+				56F6A8AD368B6B7652D23628 /* CandidatePanel.swift in Sources */,
+				FBCAC0226790DA60C5B6C008 /* ContextDetector.swift in Sources */,
+				832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */,
+				8E9A406086127F81882360CA /* InstallationManager.swift in Sources */,
+				3CA54221166E653153030A1B /* LiquidGlassVisualView.swift in Sources */,
+				737922C68989A3A1D3676E59 /* PanguSpacing.swift in Sources */,
+				12A7D3FD2439224149F214CC /* PinyinEngine.swift in Sources */,
+				0A8A8F0D348B79FF5B5B12D4 /* SetupWizardView.swift in Sources */,
+				9879D393B4773F5BE939F834 /* SmartPunctuation.swift in Sources */,
+				C5CA4C69355871AA81C868ED /* VModeCalculator.swift in Sources */,
+				6BB2F3222ED1E5BC9244F8C2 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -397,23 +405,6 @@
 			};
 			name = Release;
 		};
-		402FE025CD9FFA1C58676FD8 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "-";
-				COMBINE_HIDPI_IMAGES = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherPreview;
-				SDKROOT = macosx;
-			};
-			name = Debug;
-		};
 		41401067F8FA69A5598B2421 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -498,7 +489,7 @@
 			};
 			name = Release;
 		};
-		776617C54108F190E62D74E1 /* Release */ = {
+		9B50B1328584787C34092FA5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -510,7 +501,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherPreview;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherSetup;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -534,6 +525,23 @@
 			};
 			name = Release;
 		};
+		C5F21CCF38514B48D93E3DCF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aethernative.inputmethod.AetherSetup;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -546,11 +554,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		9C6989A1CD6B78A3723949CB /* Build configuration list for PBXNativeTarget "AetherPreview" */ = {
+		C869492D873B1887C01ACCC1 /* Build configuration list for PBXNativeTarget "AetherSetup" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				402FE025CD9FFA1C58676FD8 /* Debug */,
-				776617C54108F190E62D74E1 /* Release */,
+				C5F21CCF38514B48D93E3DCF /* Debug */,
+				9B50B1328584787C34092FA5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

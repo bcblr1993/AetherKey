@@ -36,16 +36,16 @@ targets:
       CODE_SIGN_IDENTITY: "-"
       CODE_SIGNING_REQUIRED: "NO"
 
-  AetherPreview:
+  AetherSetup:
     type: application
     platform: macOS
     sources:
-      - path: Sources/AetherPreview
+      - path: Sources/AetherSetup
       - path: Sources/AetherKey/Model
       - path: Sources/AetherKey/Engine
       - path: Sources/AetherKey/UI
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherPreview
+      PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherSetup
       GENERATE_INFOPLIST_FILE: "YES"
       CODE_SIGN_IDENTITY: "-"
       CODE_SIGNING_REQUIRED: "NO"
