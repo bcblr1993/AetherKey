@@ -17,17 +17,25 @@ if [ -e "$SETUP" ] || [ -e "$DMG" ]; then
     exit 1
 fi
 for SCHEME in AetherKey AetherSetup; do
-    xcodebuild -project "$ROOT/AetherKey.xcodeproj" -scheme "$SCHEME" -configuration Release -derivedDataPath "$DERIVED" build > "$OUT/${SCHEME}-build.log" 2>&1
+    xcodebuild -project "$ROOT/AetherKey.xcodeproj" -scheme "$SCHEME" -configuration Release -derivedDataPath "$DERIVED" -clonedSourcePackagesDirPath "$ROOT/.build/Packages" build > "$OUT/${SCHEME}-build.log" 2>&1
 done
 ditto "$DERIVED/Build/Products/Release/AetherSetup.app" "$SETUP"
 mkdir -p "$SETUP/Contents/Resources"
 ditto "$DERIVED/Build/Products/Release/AetherKey.app" "$PAYLOAD"
 cp "$ROOT/Resources/AppIcon.icns" "$SETUP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/.build/Packages/artifacts/sparkle/Sparkle/LICENSE" "$PAYLOAD/Contents/Resources/Sparkle-LICENSE.txt"
 for LOCALIZATION in zh-Hans zh_CN en; do
     plutil -convert binary1 "$PAYLOAD/Contents/Resources/${LOCALIZATION}.lproj/InfoPlist.strings"
 done
 /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string AppIcon.icns' "$SETUP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string 安装 AetherKey' "$SETUP/Contents/Info.plist"
+FRAMEWORK="$PAYLOAD/Contents/Frameworks/Sparkle.framework"
+if [ -d "$FRAMEWORK" ]; then
+    SPARKLE="$FRAMEWORK/Versions/B"
+    for COMPONENT in "$SPARKLE/XPCServices/Downloader.xpc" "$SPARKLE/XPCServices/Installer.xpc" "$SPARKLE/Autoupdate" "$SPARKLE/Updater.app" "$FRAMEWORK"; do
+        codesign --force --options runtime --timestamp --preserve-metadata=entitlements --sign "$IDENTITY" "$COMPONENT"
+    done
+fi
 for APP in "$PAYLOAD" "$SETUP"; do
     codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
 done
@@ -36,6 +44,9 @@ ditto -c -k --keepParent "$SETUP" "$OUT/AetherKey-notary.zip"
 xcrun notarytool submit "$OUT/AetherKey-notary.zip" --keychain-profile "$PROFILE" --no-s3-acceleration --wait --output-format json > "$OUT/app-notary.json"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["status"]=="Accepted"' "$OUT/app-notary.json"
 xcrun stapler staple "$PAYLOAD"
+# Sparkle must receive the input method itself, never the setup app in the DMG.
+ditto -c -k --keepParent "$PAYLOAD" "$OUT/AetherKey-${VERSION}-update.zip"
+"$ROOT/.build/Packages/artifacts/sparkle/Sparkle/bin/sign_update" --account AetherKey "$OUT/AetherKey-${VERSION}-update.zip" > "$OUT/update-signature.txt"
 # The payload lives under Resources: stapling it changes the outer resource seal.
 # Seal the final payload, then notarize the final outer app again.
 codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SETUP"
@@ -44,8 +55,8 @@ xcrun notarytool submit "$OUT/AetherKey-setup-notary.zip" --keychain-profile "$P
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["status"]=="Accepted"' "$OUT/setup-notary.json"
 xcrun stapler staple "$SETUP"
 codesign --verify --deep --strict "$SETUP"
-cat > "$STAGE/安装说明.txt" <<'GUIDE'
-AetherKey 1.0.0 — 原生 macOS 中文拼音输入法
+cat > "$STAGE/安装说明.txt" <<GUIDE
+AetherKey ${VERSION} — 原生 macOS 中文拼音输入法
 
 要求：Apple 芯片（M 系列），macOS 14 或更新版本。
 1. 双击「安装 AetherKey.app」，无需拖入 Applications。
@@ -56,15 +67,15 @@ AetherKey 1.0.0 — 原生 macOS 中文拼音输入法
 
 输入法安装在 ~/Library/Input Methods/AetherKey.app。
 词库和偏好保存在本机，更新安装会保留；无需注册账号。
-更新请从 https://aethernative.com/apps/aetherkey/ 下载并重新运行安装向导。
-完整帮助与卸载说明见官网。此版本暂不包含自动更新和云端词库同步。
+更新可从输入法菜单或偏好设置中选择「检查更新」，按提示安装并重新启动。
+完整帮助与卸载说明见官网。自动检查可在偏好设置中关闭；此版本暂不包含云端词库同步。
 GUIDE
-hdiutil create -fs HFS+ -volname 'AetherKey 1.0.0' -srcfolder "$STAGE" -format UDZO "$DMG" > "$OUT/dmg.log"
+hdiutil create -fs HFS+ -volname "AetherKey ${VERSION}" -srcfolder "$STAGE" -format UDZO "$DMG" > "$OUT/dmg.log"
 codesign --timestamp --sign "$IDENTITY" "$DMG"
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --no-s3-acceleration --wait --output-format json > "$OUT/dmg-notary.json"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["status"]=="Accepted"' "$OUT/dmg-notary.json"
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 hdiutil verify "$DMG" >> "$OUT/dmg.log"
-(cd "$OUT" && shasum -a 256 "AetherKey-${VERSION}-arm64.dmg" > SHA256SUMS)
+(cd "$OUT" && shasum -a 256 "AetherKey-${VERSION}-arm64.dmg" "AetherKey-${VERSION}-update.zip" > SHA256SUMS)
 printf '%s\n' "$DMG"

@@ -70,7 +70,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let settings = AetherSettings.shared
         
         let statsItem = NSMenuItem(
-            title: "AetherKey 1.0 · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.1") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -117,7 +117,14 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         prefsItem.target = self
         menu.addItem(prefsItem)
         
+        let updateItem = NSMenuItem(title: "检查更新…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
         return menu
+    }
+
+    @objc private func menuCheckForUpdates() {
+        MainActor.assumeIsolated { UpdateController.shared.checkForUpdates() }
     }
 
     @objc private func menuToggleInputMode() {

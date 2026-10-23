@@ -56,9 +56,10 @@ public struct PreferencesView: View {
                 
                 // Tab Selector
                 HStack(spacing: 10) {
-                    tabButton(index: 0, title: "通用与排版", icon: "slider.horizontal.3")
-                    tabButton(index: 1, title: "智能词库与短语", icon: "character.book.closed.fill")
-                    tabButton(index: 2, title: "快捷键与关于", icon: "keyboard.fill")
+                    tabButton(index: 0, title: "通用设置", icon: "slider.horizontal.3")
+                    tabButton(index: 1, title: "词库与短语", icon: "character.book.closed.fill")
+                    tabButton(index: 2, title: "更新与启动", icon: "arrow.triangle.2.circlepath")
+                    tabButton(index: 3, title: "快捷键与关于", icon: "keyboard.fill")
                     Spacer()
                 }
                 .padding(.horizontal, 24)
@@ -72,8 +73,10 @@ public struct PreferencesView: View {
                             generalSettingsCard
                         } else if selectedTab == 1 {
                             lexiconSettingsCard
+                        } else if selectedTab == 2 {
+                            UpdateSettingsView()
                         } else {
-                            shortcutsAndAboutCard
+                            shortcutsCard
                         }
                     }
                     .padding(24)
@@ -326,7 +329,7 @@ public struct PreferencesView: View {
     }
     
     // MARK: - Tab 2: Shortcuts & About
-    private var shortcutsAndAboutCard: some View {
+    private var shortcutsCard: some View {
         LiquidGlassContainer(cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 14) {
                 Label("快捷键指南与版本信息", systemImage: "command")
@@ -346,7 +349,7 @@ public struct PreferencesView: View {
                 Divider().background(Color.white.opacity(0.1))
                 
                 HStack {
-                    Text("AetherKey 1.0.0 (Official Release)")
+                    Text("AetherKey \(UpdateController.version)")
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.75))
                     Spacer()

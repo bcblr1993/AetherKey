@@ -6,9 +6,13 @@ options:
 settings:
   MACOSX_DEPLOYMENT_TARGET: "14.0"
   SWIFT_VERSION: "6.0"
-  MARKETING_VERSION: "1.0.0"
-  CURRENT_PROJECT_VERSION: "2026102402"
+  MARKETING_VERSION: "1.0.1"
+  CURRENT_PROJECT_VERSION: "2026102404"
   ARCHS: "arm64"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 targets:
   AetherKey:
     type: application
@@ -40,6 +44,9 @@ targets:
       AD_HOC_CODE_SIGNING_ALLOWED: "YES"
       ENABLE_HARDENED_RUNTIME: "NO"
       ENABLE_TESTABILITY: "YES"
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
 
   AetherKeyTests:
     type: bundle.unit-test
@@ -62,6 +69,7 @@ targets:
       - path: Sources/AetherKey/Model
       - path: Sources/AetherKey/Engine
       - path: Sources/AetherKey/UI
+        excludes: [PreferencesView.swift]
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherSetup
       GENERATE_INFOPLIST_FILE: "YES"

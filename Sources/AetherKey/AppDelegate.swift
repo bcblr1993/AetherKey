@@ -13,6 +13,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             PinyinEngine.shared.preload()
         }
         invalidateIntlFileCacheModificationPasteboard()
+        LoginItemController.shared.start()
+        UpdateController.shared.start()
         setupStatusMenu()
         updateStatusItemVisibility()
         
@@ -71,7 +73,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             button.image = makeMenuBarIcon(size: 16)
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleNone
-            button.toolTip = "AetherKey 1.0 - Apple Silicon 原生极速输入法"
+            button.toolTip = "AetherKey \(UpdateController.version)"
         }
         
         let menu = NSMenu()
@@ -88,7 +90,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         menu.removeAllItems()
         let settings = AetherSettings.shared
         
-        let titleItem = NSMenuItem(title: "AetherKey 1.0 正式版 (AetherNative)", action: nil, keyEquivalent: "")
+        let titleItem = NSMenuItem(title: "AetherKey \(UpdateController.version) (AetherNative)", action: nil, keyEquivalent: "")
         titleItem.image = makeMenuBarIcon(size: 15)
         titleItem.isEnabled = false
         menu.addItem(titleItem)
@@ -110,6 +112,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let prefsItem = NSMenuItem(title: "偏好设置与词库中心...", action: #selector(openPreferences), keyEquivalent: ",")
         prefsItem.target = self
         menu.addItem(prefsItem)
+        let updateItem = NSMenuItem(title: "检查更新…", action: #selector(UpdateController.checkForUpdates), keyEquivalent: "")
+        updateItem.target = UpdateController.shared
+        menu.addItem(updateItem)
         
         menu.addItem(NSMenuItem.separator())
         
