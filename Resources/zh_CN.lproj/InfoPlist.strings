@@ -1,3 +1,4 @@
-CFBundleDisplayName = "AetherKey 极速输入法";
-CFBundleName = "AetherKey";
-"com.aethernative.inputmethod.AetherKey.Hans" = "AetherKey 拼音 (简体中文)";
+CFBundleDisplayName = "AetherKey 输入法";
+CFBundleName = "AetherKey 拼音";
+"com.aethernative.inputmethod.AetherKey" = "AetherKey 输入法";
+"com.aethernative.inputmethod.AetherKey.Hans" = "AetherKey 拼音";

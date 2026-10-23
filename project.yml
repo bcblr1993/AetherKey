@@ -13,9 +13,22 @@ targets:
     platform: macOS
     sources:
       - Sources/AetherKey
-      - Resources/zh-Hans.lproj
-      - Resources/zh_CN.lproj
-      - Resources/en.lproj
+      - path: Resources/zh-Hans.lproj
+        type: folder
+      - path: Resources/zh_CN.lproj
+        type: folder
+      - path: Resources/en.lproj
+        type: folder
+      - Resources/icon.tiff
+      - Resources/menubar.pdf
+      - Resources/icon.png
+      - Resources/AppIcon.icns
+      - Resources/lexicon.json
+      - Resources/characters.json
+      - Resources/characters-source.json
+      - Resources/Unihan-LICENSE.txt
+      - Resources/emoji.json
+      - Resources/Unicode-LICENSE.txt
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherKey
       GENERATE_INFOPLIST_FILE: "NO"

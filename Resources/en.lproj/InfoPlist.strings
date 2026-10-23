@@ -1,3 +1,4 @@
-CFBundleDisplayName = "AetherKey";
-CFBundleName = "AetherKey";
-"com.aethernative.inputmethod.AetherKey.Hans" = "AetherKey Pinyin (Simplified Chinese)";
+CFBundleDisplayName = "AetherKey 输入法";
+CFBundleName = "AetherKey 拼音";
+"com.aethernative.inputmethod.AetherKey" = "AetherKey 输入法";
+"com.aethernative.inputmethod.AetherKey.Hans" = "AetherKey 拼音";

@@ -1,10 +1,17 @@
 import Foundation
 
 /// Smart punctuation engine: Converts ASCII punctuation to Chinese typographic counterparts,
-/// with intelligent decimal point retention when typing numbers.
-public final class SmartPunctuation: Sendable {
+/// with stateful quote pairing (“” / ‘’) and intelligent decimal/colon retention when typing numbers.
+public final class SmartPunctuation: @unchecked Sendable {
     public static let shared = SmartPunctuation()
     
+    private let lock = NSLock()
+    private var isDoubleQuoteOpen: Bool = false
+    private var isSingleQuoteOpen: Bool = false
+    private var isOpenCornerBracketInner: Bool = false
+    private var isCloseCornerBracketInner: Bool = false
+    
+    /// Aligned with Sogou Pinyin's `symbolset2.plist` (`jian-ban` Simplified Chinese punctuation table)
     private let punctuationMap: [Character: String] = [
         ",": "，",
         ".": "。",
@@ -12,20 +19,38 @@ public final class SmartPunctuation: Sendable {
         "!": "！",
         ":": "：",
         ";": "；",
+        "/": "、",
         "\\": "、",
         "(": "（",
         ")": "）",
         "[": "【",
         "]": "】",
+        "{": "「",
+        "}": "」",
         "<": "《",
         ">": "》",
         "^": "……",
+        "_": "——",
         "~": "～",
-        "$": "￥"
+        "`": "·",
+        "$": "￥",
+        "\"": "“",
+        "'": "‘"
     ]
     
+    /// Resets quote pairing state (e.g. when starting a new session or test).
+    public func resetState() {
+        lock.lock()
+        isDoubleQuoteOpen = false
+        isSingleQuoteOpen = false
+        isOpenCornerBracketInner = false
+        isCloseCornerBracketInner = false
+        lock.unlock()
+    }
+    
     /// Converts input character to smart punctuation.
-    /// If preceding character is a digit and input is '.', preserves half-width '.' as decimal point.
+    /// - Preserves half-width '.' or ':' after a digit (e.g. 3.14, 12:30).
+    /// - Alternates opening and closing curly quotes for '"' and '\''.
     public func convert(char: Character, precedingChar: Character?) -> String {
         // Decimal point retention rule: e.g. 3.14, 0.05
         if char == "." {
@@ -41,6 +66,40 @@ public final class SmartPunctuation: Sendable {
                 return ":"
             }
             return "："
+        }
+        
+        // Stateful double quote pairing: “ ... ”
+        if char == "\"" {
+            lock.lock()
+            let result = isDoubleQuoteOpen ? "”" : "“"
+            isDoubleQuoteOpen.toggle()
+            lock.unlock()
+            return result
+        }
+        
+        // Stateful single quote pairing: ‘ ... ’
+        if char == "'" {
+            lock.lock()
+            let result = isSingleQuoteOpen ? "’" : "‘"
+            isSingleQuoteOpen.toggle()
+            lock.unlock()
+            return result
+        }
+        
+        // Sogou-style corner bracket alternation: { -> 「 / 『, } -> 」 / 』
+        if char == "{" {
+            lock.lock()
+            let result = isOpenCornerBracketInner ? "『" : "「"
+            isOpenCornerBracketInner.toggle()
+            lock.unlock()
+            return result
+        }
+        if char == "}" {
+            lock.lock()
+            let result = isCloseCornerBracketInner ? "』" : "」"
+            isCloseCornerBracketInner.toggle()
+            lock.unlock()
+            return result
         }
         
         return punctuationMap[char] ?? String(char)

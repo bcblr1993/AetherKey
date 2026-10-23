@@ -22,7 +22,6 @@ public struct VisualEffectBlur: NSViewRepresentable {
         view.material = material
         view.blendingMode = blendingMode
         view.state = state
-        view.appearance = NSAppearance(named: .darkAqua)
         view.wantsLayer = true
         view.layer?.drawsAsynchronously = true
         return view
@@ -35,10 +34,12 @@ public struct VisualEffectBlur: NSViewRepresentable {
     }
 }
 
-/// AetherNative Liquid Glass Container with razor-thin 0.5pt specular gradient border and dark glass backing.
+/// A restrained material surface that follows the system appearance and accessibility settings.
 public struct LiquidGlassContainer<Content: View>: View {
     public let cornerRadius: CGFloat
     public let content: Content
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(cornerRadius: CGFloat = 14, @ViewBuilder content: () -> Content) {
         self.cornerRadius = cornerRadius
@@ -47,79 +48,62 @@ public struct LiquidGlassContainer<Content: View>: View {
 
     public var body: some View {
         content
-            .background(
+            .background {
                 ZStack {
-                    // Deep dark visual effect glass base
-                    VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow, state: .active)
-                    
-                    // Dark ambient overlay (45% pure black)
-                    Color.black.opacity(0.48)
-                    
-                    // Subtle ambient specular gradient
+                    if reduceTransparency {
+                        Color(nsColor: .windowBackgroundColor)
+                    } else {
+                        VisualEffectBlur(material: .popover)
+                        Color(nsColor: .windowBackgroundColor).opacity(0.55)
+                    }
                     LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.04),
-                            Color.clear,
-                            Color.black.opacity(0.18)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        colors: [Color.white.opacity(colorScheme == .dark ? 0.035 : 0.25), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            )
-            .overlay(
-                // 0.5pt razor gradient subtle glow border
+            }
+            .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.36), location: 0.0),  // Top-left highlight
-                                .init(color: Color.white.opacity(0.16), location: 0.25),
-                                .init(color: Color.white.opacity(0.04), location: 0.65),
-                                .init(color: Color.white.opacity(0.12), location: 1.0)   // Bottom-right subtle bounce
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
-            // Low-frequency diffuse shadow for floating depth
-            .shadow(color: Color.black.opacity(0.55), radius: 24, x: 0, y: 12)
-            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.10), lineWidth: 0.5)
+            }
     }
 }
 
-/// AetherNative Subtle Glow Capsule for highlighted candidate selection
-public struct SubtleGlowCapsule: View {
-    public var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.13),
-                        Color.white.opacity(0.07)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.32),
-                                Color.white.opacity(0.10)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
-            // Soft diffuse micro-glow shadow
-            .shadow(color: Color.white.opacity(0.09), radius: 6, x: 0, y: 1)
+/// Single-color reduction of the floating key A mark, shared by the menu and input-source resources.
+public enum AetherMenuBarIcon {
+    public static func draw(in rect: NSRect, color: NSColor = .black) {
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let side = min(rect.width, rect.height)
+        (AffineTransform(translationByX: rect.midX - side / 2, byY: rect.midY - side / 2) as NSAffineTransform).concat()
+        (AffineTransform(scaleByX: side / 100, byY: side / 100) as NSAffineTransform).concat()
+        let outline = NSBezierPath()
+        outline.move(to: NSPoint(x: 19, y: 19))
+        outline.line(to: NSPoint(x: 46, y: 80))
+        outline.line(to: NSPoint(x: 53, y: 80))
+        outline.line(to: NSPoint(x: 81, y: 19))
+        outline.lineWidth = 11
+        outline.lineCapStyle = .round
+        outline.lineJoinStyle = .round
+        color.setStroke()
+        outline.stroke()
+        let bar = NSBezierPath()
+        bar.move(to: NSPoint(x: 35, y: 39))
+        bar.line(to: NSPoint(x: 66, y: 39))
+        bar.lineWidth = 9
+        bar.lineCapStyle = .round
+        bar.stroke()
+    }
+
+    public static func image(size: CGFloat = 16) -> NSImage {
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            draw(in: rect)
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "AetherKey"
+        return image
     }
 }

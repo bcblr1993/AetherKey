@@ -1,159 +1,95 @@
 import AppKit
 import SwiftUI
 
-@MainActor
+/// Uses the production candidate view so appearance and interaction can be reviewed safely.
 struct PreviewAppView: View {
-    @State private var inputText: String = "zhongwen"
-    @State private var selectedIndex: Int = 0
-    @State private var candidates: [Candidate] = [
-        Candidate(text: "中文", pinyin: "zhong'wen"),
-        Candidate(text: "中国", pinyin: "zhong'guo"),
-        Candidate(text: "中午", pinyin: "zhong'wu"),
-        Candidate(text: "终文", pinyin: "zhong'wen"),
-        Candidate(text: "AetherKey", comment: "科技输入法")
-    ]
-    @State private var inputMode: InputMode = .chinese
-    @State private var outputBuffer: String = "使用 Swift 6 开发 macOS 原生极速输入法。"
-    @State private var typedInput: String = ""
+    @State private var selectedIndex = 0
+    @State private var viewMode: CandidateViewMode = .paging
+    @State private var currentPage = 1
+    @State private var input = CommandLine.arguments.contains("--emoji-preview") ? "meigui" : "ni'hao"
+    @State private var selection = "点击候选词，或切换展开模式查看效果"
+
+    private var words: [String] {
+        if CommandLine.arguments.contains("--emoji-preview") {
+            return PinyinEngine.shared.query(rawInput: input).map(\.text)
+        }
+        return ["你好", "您好", "你们好", "你好呀", "你好啊", "拟好", "霓裳", "你好吗", "你好世界", "你好朋友", "你好生活", "你好北京", "你好上海", "你好中国"]
+    }
+    private var candidates: [Candidate] { words.map { Candidate(text: $0) } }
 
     var body: some View {
-        ZStack {
-            // Dark futuristic background canvas
-            Color(red: 0.05, green: 0.05, blue: 0.07)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 28) {
-                // Title
-                VStack(spacing: 6) {
-                    Text("AetherKey · 科技美学与原生极速")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.white)
-                    Text("AetherNative Liquid Glass · 0.5pt 刀锋微光 · 120fps GPU 弹簧阻尼")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                }
-                
-                // Live Candidate Panel Widget
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("候选窗口实时渲染预览 (Candidate Floating Panel)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.40))
-                    
-                    CandidateListView(
-                        inputString: inputText,
-                        mode: inputMode,
-                        candidates: candidates,
-                        selectedIndex: selectedIndex,
-                        currentPage: 1,
-                        totalPages: 3
-                    )
-                }
-                
-                // Interactive Controls
-                VStack(spacing: 14) {
-                    HStack(spacing: 12) {
-                        Button("切换上一词 (↑ / ←)") {
-                            if selectedIndex > 0 {
-                                selectedIndex -= 1
-                            } else {
-                                selectedIndex = candidates.count - 1
-                            }
-                        }
-                        .keyboardShortcut(.leftArrow, modifiers: [])
-                        
-                        Button("切换下一词 (↓ / →)") {
-                            if selectedIndex < candidates.count - 1 {
-                                selectedIndex += 1
-                            } else {
-                                selectedIndex = 0
-                            }
-                        }
-                        .keyboardShortcut(.rightArrow, modifiers: [])
-                        
-                        Button("切换模式: \(inputMode.badgeTitle)") {
-                            inputMode = (inputMode == .chinese ? .english : (inputMode == .english ? .vMode : .chinese))
-                        }
-                    }
-                    
-                    // Quick sample queries
-                    HStack(spacing: 8) {
-                        Button("全拼: zhongwen") {
-                            inputText = "zhongwen"
-                            inputMode = .chinese
-                            candidates = PinyinEngine.shared.query(rawInput: "zhongwen")
-                            selectedIndex = 0
-                        }
-                        Button("简拼: nh (你好)") {
-                            inputText = "nh"
-                            inputMode = .chinese
-                            candidates = PinyinEngine.shared.query(rawInput: "nh")
-                            selectedIndex = 0
-                        }
-                        Button("液态玻璃: ytbl") {
-                            inputText = "ytbl"
-                            inputMode = .chinese
-                            candidates = PinyinEngine.shared.query(rawInput: "ytbl")
-                            selectedIndex = 0
-                        }
-                        Button("v模式: v1+2*3") {
-                            inputText = "v1+2*3"
-                            inputMode = .vMode
-                            candidates = VModeCalculator.shared.candidates(for: "v1+2*3")
-                            selectedIndex = 0
-                        }
-                        Button("v日期: vdate") {
-                            inputText = "vdate"
-                            inputMode = .vMode
-                            candidates = VModeCalculator.shared.candidates(for: "vdate")
-                            selectedIndex = 0
-                        }
-                    }
-                }
-                
-                // Interactive Typing Box demonstrating Pangu Spacing & Smart Punctuation
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("盘古空格 & 智能标点演示输入框:")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    
-                    TextField("在此输入文字，体验自动补全空格与标点...", text: $typedInput)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 14))
-                        .frame(width: 480)
-                        .onChange(of: typedInput) { _, newValue in
-                            let spaced = PanguSpacing.shared.spacing(newValue)
-                            if spaced != newValue {
-                                typedInput = spaced
-                            }
-                        }
-                }
-                
-                // Status footer
-                HStack(spacing: 16) {
-                    Label("Apple Silicon 原生优化", systemImage: "cpu")
-                    Label("120Hz ProMotion 友好", systemImage: "bolt.fill")
-                    Label("静止 0% CPU 占用", systemImage: "leaf.fill")
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.40))
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("AetherKey").font(.system(size: 25, weight: .semibold))
+                Text("轻一点的界面，专注每一次表达。")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
             }
-            .padding(32)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("浅色 · 点击选词 / 展开 / 翻页").font(.system(size: 11)).foregroundStyle(.secondary)
+                sample(scheme: .light, expanded: viewMode)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("深色 · 双行候选").font(.system(size: 11)).foregroundStyle(.secondary)
+                sample(scheme: .dark, expanded: .scroll)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("V 模式 · 运算结果").font(.system(size: 11)).foregroundStyle(.secondary)
+                CandidateListView(inputString: "v128.5", mode: .vMode,
+                    candidates: [Candidate(text: "壹佰贰拾捌元伍角", comment: "人民币大写"), Candidate(text: "128.5")],
+                    selectedIndex: 0)
+                    .environment(\.colorScheme, .light)
+                    .padding(16)
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
+            }
+            HStack {
+                TextField("输入拼音预览", text: $input).textFieldStyle(.roundedBorder).frame(width: 180)
+                Text(selection).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
         }
-        .frame(minWidth: 620, minHeight: 460)
+        .padding(32)
+        .frame(width: 800)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .tint(.blue)
+    }
+
+    private func sample(scheme: ColorScheme, expanded: CandidateViewMode) -> some View {
+        CandidateListView(
+            inputString: input, mode: .chinese, viewMode: expanded,
+            candidates: expanded == .scroll ? candidates : Array(candidates.prefix(7)), selectedIndex: expanded == .scroll ? selectedIndex : min(selectedIndex, 6),
+            currentPage: currentPage, totalPages: 3,
+            onSelectCandidate: { selectedIndex = $0; selection = "已选择：\(words[$0])" },
+            onToggleViewMode: { viewMode = viewMode == .paging ? .scroll : .paging },
+            onPageDelta: { currentPage = min(3, max(1, currentPage + $0)) }
+        )
+        .environment(\.colorScheme, scheme)
+        .padding(16)
+        .background(scheme == .dark ? Color(red: 0.13, green: 0.14, blue: 0.17) : Color.white,
+                    in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
 let app = NSApplication.shared
-let window = NSWindow(
-    contentRect: NSRect(x: 100, y: 100, width: 660, height: 500),
-    styleMask: [.titled, .closable, .miniaturizable, .resizable],
-    backing: .buffered,
-    defer: false
-)
-window.title = "AetherKey 动效与交互预览"
-window.center()
-window.contentView = NSHostingView(rootView: PreviewAppView())
-window.makeKeyAndOrderFront(nil)
 app.setActivationPolicy(.regular)
+let host = NSHostingView(rootView: PreviewAppView())
+let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+    styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+window.title = "AetherKey · 候选面板预览"
+window.contentView = host
+window.center()
+window.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
+if let flag = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > flag + 1 {
+    let path = CommandLine.arguments[flag + 1]
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        host.layoutSubtreeIfNeeded()
+        if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            if let data = bitmap.representation(using: .png, properties: [:]) {
+                try? data.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        app.terminate(nil)
+    }
+}
 app.run()
