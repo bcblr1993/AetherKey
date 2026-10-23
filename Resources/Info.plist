@@ -27,7 +27,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2026102402</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -59,6 +59,11 @@
         <dict>
             <key>com.aethernative.inputmethod.AetherKey.Hans</key>
             <dict>
+                <key>TISIconLabels</key>
+                <dict>
+                    <key>Primary</key>
+                    <string>中</string>
+                </dict>
                 <key>TISInputSourceID</key>
                 <string>com.aethernative.inputmethod.AetherKey.Hans</string>
                 <key>TISIntendedLanguage</key>
@@ -71,8 +76,6 @@
                 <true/>
                 <key>tsInputModeDefaultStateKey</key>
                 <true/>
-                <key>tsInputModeAlternateMenuIconFileKey</key>
-                <string>icon.tiff</string>
                 <key>tsInputModeMenuIconFileKey</key>
                 <string>icon.tiff</string>
                 <key>tsInputModePaletteIconFileKey</key>

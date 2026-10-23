@@ -14,23 +14,24 @@ struct ExportMenuBarIcon {
         let resources = root.appendingPathComponent("Resources")
         let output = root.appendingPathComponent(".build/brand-preview")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        let mark = MarkView(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
+        let mark = MarkView(frame: NSRect(x: 0, y: 0, width: 22, height: 18))
         try mark.dataWithPDF(inside: mark.bounds).write(to: resources.appendingPathComponent("menubar.pdf"))
-        let image = NSImage(size: NSSize(width: 16, height: 16))
-        for pixels in [16, 32] {
-            let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
+        let image = NSImage(size: NSSize(width: 22, height: 18))
+        for scale in [1, 2] {
+            let pixels = 22 * scale
+            let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: 18 * scale,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-            bitmap.size = NSSize(width: 16, height: 16)
+            bitmap.size = NSSize(width: 22, height: 18)
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
             NSGraphicsContext.current!.imageInterpolation = .high
-            AetherMenuBarIcon.draw(in: NSRect(x: 0, y: 0, width: 16, height: 16))
+            AetherMenuBarIcon.draw(in: NSRect(x: 0, y: 0, width: 22, height: 18))
             NSGraphicsContext.restoreGraphicsState()
             image.addRepresentation(bitmap)
             let png = bitmap.representation(using: .png, properties: [:])!
             try png.write(to: output.appendingPathComponent("menubar-\(pixels).png"))
-            if pixels == 32 { try png.write(to: resources.appendingPathComponent("icon.png")) }
+            if scale == 2 { try png.write(to: resources.appendingPathComponent("icon.png")) }
         }
         try image.tiffRepresentation!.write(to: resources.appendingPathComponent("icon.tiff"))
 

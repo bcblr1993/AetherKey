@@ -1,0 +1,7 @@
+.DS_Store
+.build/
+output/
+DerivedData/
+**/__pycache__/
+*.profraw
+*.xcuserstate
