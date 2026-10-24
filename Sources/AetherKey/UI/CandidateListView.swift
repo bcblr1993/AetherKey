@@ -60,6 +60,8 @@ public struct CandidateListView: View {
     public let onSelectCandidate: ((Int) -> Void)?
     public let onToggleViewMode: (() -> Void)?
     public let onPageDelta: ((Int) -> Void)?
+    public let onCandidateAction: ((Int, CandidateAction) -> Void)?
+    public let isCandidatePinned: ((Int) -> Bool)?
     public let viewportWidth: CGFloat?
 
     @State private var hoveredIndex: Int?
@@ -76,6 +78,8 @@ public struct CandidateListView: View {
         onSelectCandidate: ((Int) -> Void)? = nil,
         onToggleViewMode: (() -> Void)? = nil,
         onPageDelta: ((Int) -> Void)? = nil,
+        onCandidateAction: ((Int, CandidateAction) -> Void)? = nil,
+        isCandidatePinned: ((Int) -> Bool)? = nil,
         viewportWidth: CGFloat? = nil
     ) {
         self.inputString = inputString
@@ -89,6 +93,8 @@ public struct CandidateListView: View {
         self.onSelectCandidate = onSelectCandidate
         self.onToggleViewMode = onToggleViewMode
         self.onPageDelta = onPageDelta
+        self.onCandidateAction = onCandidateAction
+        self.isCandidatePinned = isCandidatePinned
         self.viewportWidth = viewportWidth
     }
 
@@ -243,6 +249,16 @@ public struct CandidateListView: View {
             .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if mode == .chinese && !candidate.isEmoji && candidate.comment != "英" {
+                if isCandidatePinned?(index) == true {
+                    Button("取消置顶", systemImage: "pin.slash") { onCandidateAction?(index, .unpin) }
+                } else {
+                    Button("置顶此候选词", systemImage: "pin") { onCandidateAction?(index, .pin) }
+                }
+                Button("忘记此候选词", systemImage: "minus.circle") { onCandidateAction?(index, .forget) }
+            }
+        }
         .onHover { hovering in hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex) }
         .accessibilityLabel("\(index < 9 ? String(index + 1) : "") \(candidate.text)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])

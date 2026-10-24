@@ -15,6 +15,8 @@ public final class CandidateState: ObservableObject, @unchecked Sendable {
     @Published public var isVisible: Bool = false
     @Published public var viewportWidth: CGFloat? = nil
     
+    public var onCandidateAction: ((Int, CandidateAction) -> Void)?
+    public var isCandidatePinned: ((Int) -> Bool)?
     public var onSelectCandidate: ((Int) -> Void)?
     public var onToggleViewMode: (() -> Void)?
     public var onPageDelta: ((Int) -> Void)?
@@ -41,6 +43,8 @@ public struct CandidatePanelRootView: View {
             onSelectCandidate: state.onSelectCandidate,
             onToggleViewMode: state.onToggleViewMode,
             onPageDelta: state.onPageDelta,
+            onCandidateAction: state.onCandidateAction,
+            isCandidatePinned: state.isCandidatePinned,
             viewportWidth: state.viewportWidth
         )
         .transaction { $0.animation = nil }

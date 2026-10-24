@@ -29,3 +29,7 @@ public struct Candidate: Identifiable, Equatable, Sendable {
         self.consumedInputLength = consumedInputLength
     }
 }
+
+public enum CandidateAction: Sendable {
+    case pin, unpin, forget
+}

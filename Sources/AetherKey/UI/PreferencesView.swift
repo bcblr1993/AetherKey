@@ -343,7 +343,11 @@ public struct PreferencesView: View {
                 shortcutRow(key: "回车键 (Return)", desc: "将当前输入的拼音字母原样英文上屏")
                 shortcutRow(key: "数字键 1 - 9 / 鼠标点击", desc: "直接选择当前页对应序号的候选词（支持长句分步选词）")
                 shortcutRow(key: "- / = 或 [ / ] 或 PgUp/PgDn", desc: "候选词上一页 / 下一页翻页")
-                shortcutRow(key: "Tab / 方向键 ↑↓←→", desc: "在候选词列表中移动高亮焦点")
+                shortcutRow(key: "Tab / 方向键 ↑↓", desc: "在候选词列表中移动高亮焦点")
+                shortcutRow(key: "← / → · Home / End", desc: "移动拼音光标，修改中间字母；Option + ← / → 按音节移动")
+                shortcutRow(key: "Option + Delete", desc: "删除光标前的一个音节；向前删除键删除光标后的字母")
+                shortcutRow(key: "候选词右键菜单", desc: "置顶、取消置顶或忘记当前拼音下的候选词")
+                shortcutRow(key: "⌃⌥P / ⌃⌥U / ⌃⌥Delete", desc: "置顶 / 取消置顶 / 忘记当前高亮候选词")
                 shortcutRow(key: "v + 算式 / 金额 / date / time", desc: "触发 V 模式：实时四则运算 (v1+2*3)、人民币大写 (v128.5)、日期时间宏 (vdate)")
                 
                 Divider().background(Color.white.opacity(0.1))

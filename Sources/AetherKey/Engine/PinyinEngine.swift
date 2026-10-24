@@ -1149,7 +1149,10 @@ public final class PinyinEngine: Sendable {
     /// All valid syllable prefixes (length 1..5) for fast incremental typing detection
     private let validPrefixes: Set<String>
     
-    public init() {
+    private let userLexicon: UserLexicon
+
+    public init(userLexicon: UserLexicon = .shared) {
+        self.userLexicon = userLexicon
         var prefixes = Set<String>()
         for s in PinyinLexicon.allSyllables {
             let chars = Array(s)
@@ -1167,7 +1170,7 @@ public final class PinyinEngine: Sendable {
     public func preload() {
         _ = PinyinLexicon.commonPhrases.count
         _ = PinyinLexicon.syllablesChars.count
-        _ = UserLexicon.shared.learnedEntryCount
+        _ = userLexicon.learnedEntryCount
     }
     
     /// Dynamic programming based maximal syllable segmenter (compatibility API).
@@ -1356,90 +1359,64 @@ public final class PinyinEngine: Sendable {
     
     /// Dynamic Programming Sentence Composer over segmented syllable tokens.
     /// Assembles multi-phrase sentences like "woxiangchifan" -> "我想吃饭", "jintiantianqizenmeyang" -> "今天天气怎么样".
-    private func composeSentence(tokens: [SyllableToken]) -> String? {
-        let m = tokens.count
-        guard m >= 2 else { return nil }
-        
-        struct PathNode {
-            let text: String
-            let score: Int
-        }
-        
-        var dp: [PathNode?] = Array(repeating: nil, count: m + 1)
-        dp[0] = PathNode(text: "", score: 0)
-        
-        for i in 0..<m {
-            guard let cur = dp[i] else { continue }
-            let maxSpan = min(6, m - i)
-            
-            for span in 1...maxSpan {
+    /// Bounded beam search keeps alternative word boundaries and homophones alive.
+    /// Scores use phrase cohesion, dictionary order and local selections; no network model.
+    private func composeSentences(tokens: [SyllableToken]) -> [String] {
+        guard tokens.count >= 2 else { return [] }
+        struct Path { let text: String; let score: Double }
+        let beamWidth = 8
+        var beams = Array(repeating: [Path](), count: tokens.count + 1)
+        beams[0] = [Path(text: "", score: 0)]
+        for i in tokens.indices where !beams[i].isEmpty {
+            for span in 1...min(6, tokens.count - i) {
                 let slice = tokens[i..<(i + span)]
-                if span >= 2 {
-                    // Check if all tokens in slice are complete, or if the last token in slice is incomplete
-                    let allCompleteExceptMaybeLast = slice.dropLast().allSatisfy(\.isComplete)
-                    guard allCompleteExceptMaybeLast else { continue }
-                    
-                    let lastTok = slice.last!
-                    if lastTok.isComplete {
-                        let key = slice.map(\.text).joined()
-                        let word = UserLexicon.shared.preferredWords(for: key).first
-                            ?? PinyinLexicon.builtinCorePhrases[key]?.first(where: { $0.count == span })
-                            ?? PinyinLexicon.commonPhrases[key]?.first(where: { $0.count == span })
-                            ?? PinyinLexicon.commonPhrases[key]?.first
-                        if let matchedWord = word {
-                            // Linear coverage score (span * 100) + multi-char cohesion bonus ((span - 1) * 15)
-                            // Ensures two 2-syllable words (215 + 215 = 430) beat one 3-syllable + 1-orphan char (330 + 10 = 340)!
-                            let isCore = (PinyinLexicon.builtinCorePhrases[key] != nil)
-                            let stepScore = span * 100 + (span - 1) * 15 + (isCore ? 8 : 0)
-                            let nextScore = cur.score + stepScore
-                            if dp[i + span] == nil || nextScore > dp[i + span]!.score {
-                                dp[i + span] = PathNode(text: cur.text + matchedWord, score: nextScore)
-                            }
+                guard slice.dropLast().allSatisfy(\.isComplete), let last = slice.last else { continue }
+                let prefix = slice.dropLast().map(\.text).joined()
+                let endings = last.isComplete ? [last.text] : Array(expandPrefix(last.text).prefix(8))
+                var edges: [(String, Double)] = []
+                for (expansionRank, ending) in endings.enumerated() {
+                    let key = prefix + ending
+                    var words = userLexicon.preferredWords(for: key)
+                    if span == 1 {
+                        // Do not fill whole-sentence alternatives with arbitrary homophones.
+                        if let common = PinyinLexicon.sentenceSingleCharMap[key] ?? PinyinLexicon.syllablesChars[key]?.first {
+                            words.append(common)
                         }
+                    } else if let core = PinyinLexicon.builtinCorePhrases[key]?.first {
+                        // Curated everyday phrases are stronger priors than dictionary variants.
+                        // Explicit user choices can still override them and retain alternatives.
+                        words.append(core)
                     } else {
-                        // Last token is an incomplete syllable prefix (e.g. "ni" + "h" -> "nihao" -> "你好")
-                        let prefixKey = slice.dropLast().map(\.text).joined()
-                        for expanded in expandPrefix(lastTok.text).prefix(8) {
-                            let fullKey = prefixKey + expanded
-                            if let matchedWord = PinyinLexicon.builtinCorePhrases[fullKey]?.first(where: { $0.count == span })
-                                ?? PinyinLexicon.commonPhrases[fullKey]?.first(where: { $0.count == span }) {
-                                let stepScore = span * 95 + (span - 1) * 12
-                                let nextScore = cur.score + stepScore
-                                if dp[i + span] == nil || nextScore > dp[i + span]!.score {
-                                    dp[i + span] = PathNode(text: cur.text + matchedWord, score: nextScore)
-                                }
-                                break
-                            }
-                        }
+                        words += (PinyinLexicon.commonPhrases[key] ?? []).prefix(6)
                     }
-                } else {
-                    // Single syllable span (span == 1)
-                    let tok = slice.first!
-                    let s: String
-                    if tok.isComplete {
-                        s = tok.text
-                    } else if let firstExpanded = expandPrefix(tok.text).first {
-                        s = firstExpanded
-                    } else {
-                        continue
-                    }
-                    
-                    let char = UserLexicon.shared.preferredWords(for: s).first(where: { $0.count == 1 })
-                        ?? PinyinLexicon.sentenceSingleCharMap[s]
-                        ?? PinyinLexicon.syllablesChars[s]?.first
-                    if let c = char {
-                        let nextScore = cur.score + 10
-                        if dp[i + 1] == nil || nextScore > dp[i + 1]!.score {
-                            dp[i + 1] = PathNode(text: cur.text + c, score: nextScore)
-                        }
+                    var seen = Set<String>()
+                    for word in words where word.count == span && seen.insert(word).inserted {
+                        guard !userLexicon.isForgotten(word, for: key) else { continue }
+                        let rank = seen.count - 1
+                        let cohesion = span > 1 ? Double(span * 100 + (span - 1) * 15) : 10
+                        let core = PinyinLexicon.builtinCorePhrases[key]?.contains(word) == true ? 8.0 : 0
+                        let learned = min(80, log1p(Double(userLexicon.selectionCount(word, for: key))) * 18)
+                        let pinned = userLexicon.isPinned(word, for: key) ? 100.0 : 0
+                        let score = cohesion + core + learned + pinned - Double(rank * 8 + expansionRank * 4)
+                            - (last.isComplete ? 0 : Double(span * 5))
+                        edges.append((word, score))
                     }
                 }
+                var paths = beams[i + span]
+                for path in beams[i] {
+                    for (word, score) in edges { paths.append(Path(text: path.text + word, score: path.score + score)) }
+                }
+                paths.sort { $0.score == $1.score ? $0.text < $1.text : $0.score > $1.score }
+                var seen = Set<String>()
+                beams[i + span] = Array(paths.filter { seen.insert($0.text).inserted }.prefix(beamWidth))
             }
         }
-        
-        return dp[m]?.text
+        let completed = beams[tokens.count]
+        guard let best = completed.first else { return [] }
+        // Weak boundaries such as 我 + 相持 + 饭 must not crowd out useful prefix choices.
+        return Array(completed.filter { $0.score >= best.score - 40 }.prefix(5).map(\.text))
     }
-    
+
     /// Queries candidate list for given raw pinyin buffer.
     public func query(rawInput: String) -> [Candidate] {
         let input = rawInput.lowercased().replacingOccurrences(of: "ü", with: "v").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1450,7 +1427,8 @@ public final class PinyinEngine: Sendable {
         var candidates: [Candidate] = []
         
         func addCandidate(word: String, comment: String? = nil, consumedLength: Int = 0) {
-            guard !word.isEmpty, !seenWords.contains(word) else { return }
+            let reading = String(input.prefix(consumedLength > 0 ? consumedLength : fullInputCount))
+            guard !word.isEmpty, !seenWords.contains(word), !userLexicon.isForgotten(word, for: reading) else { return }
             seenWords.insert(word)
             candidates.append(
                 Candidate(
@@ -1465,7 +1443,7 @@ public final class PinyinEngine: Sendable {
         let hasExplicitApostrophe = input.contains("'")
         
         // 0. User-learned / custom phrases highest priority
-        for userWord in UserLexicon.shared.preferredWords(for: stripped) {
+        for userWord in userLexicon.preferredWords(for: stripped) {
             addCandidate(word: userWord)
         }
         
@@ -1579,7 +1557,7 @@ public final class PinyinEngine: Sendable {
             
             // 4b. Dynamic Programming full sentence composition (e.g. "woxiangchifan" -> "我想吃饭", "jintiantianqizenmeyang" -> "今天天气怎么样")
             if tokens.count >= 2 {
-                if let composed = composeSentence(tokens: tokens) {
+                for composed in composeSentences(tokens: tokens) {
                     addCandidate(word: composed)
                 }
             }
@@ -1677,6 +1655,20 @@ public final class PinyinEngine: Sendable {
         }
 
         candidates = CandidateRanking.merge(text: candidates, input: input)
+        // Reapply explicit preferences after Emoji interleaving; stable order for all others.
+        var pinnedCandidates: [Candidate] = []
+        var otherCandidates: [Candidate] = []
+        for candidate in candidates {
+            let reading = String(input.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : fullInputCount))
+            guard !userLexicon.isForgotten(candidate.text, for: reading) else { continue }
+            if (candidate.consumedInputLength == 0 || candidate.consumedInputLength == fullInputCount),
+               userLexicon.isPinned(candidate.text, for: reading) {
+                pinnedCandidates.append(candidate)
+            } else {
+                otherCandidates.append(candidate)
+            }
+        }
+        candidates = pinnedCandidates + otherCandidates
 
         // 5. English raw buffer fallback
         if !seenWords.contains(rawInput) {

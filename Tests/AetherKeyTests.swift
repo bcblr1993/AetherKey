@@ -10,6 +10,7 @@ import InputMethodKit
 final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     var insertedText: String = ""
     var markedText: String = ""
+    var markedSelection: NSRange = NSRange(location: 0, length: 0)
     var lastReplacementRange: NSRange = NSRange(location: NSNotFound, length: NSNotFound)
     var attributesCaretRect: NSRect?
     var lastFirstRectRange: NSRange?
@@ -26,6 +27,7 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
         if let str = string as? String {
             markedText = str
         }
+        self.markedSelection = selectionRange
         self.lastReplacementRange = replacementRange
     }
     
@@ -98,12 +100,13 @@ func makeKeyEvent(char: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlag
 struct AetherKeyEngineTests {
     @Test("Every bundled Unihan reading remains reachable as an exact syllable candidate")
     func testCompleteCharacterCoverage() throws {
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")))
         let url = try #require(Bundle.main.url(forResource: "characters", withExtension: "json"))
         let rows = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
         #expect(rows.count == 426)
         #expect(Set(rows.values.flatMap { $0.unicodeScalars.map(\.value) }).count == 44_359)
         for (syllable, characters) in rows {
-            let candidates = PinyinEngine.shared.query(rawInput: syllable)
+            let candidates = engine.query(rawInput: syllable)
             let reachable = Set(candidates.map(\.text))
             let missing = characters.map(String.init).filter { !reachable.contains($0) }
             #expect(missing.isEmpty, "Missing characters for \(syllable): \(missing)")
@@ -111,12 +114,12 @@ struct AetherKeyEngineTests {
         }
         for (syllable, character) in [("jing", "璟"), ("yi", "逸"), ("yu", "彧"),
                                       ("zhe", "喆"), ("da", "龘"), ("ou", "𠙶")] {
-            #expect(PinyinEngine.shared.query(rawInput: syllable).contains { $0.text == character })
+            #expect(engine.query(rawInput: syllable).contains { $0.text == character })
         }
-        #expect(PinyinEngine.shared.query(rawInput: "jingyi").contains {
+        #expect(engine.query(rawInput: "jingyi").contains {
             $0.text == "璟" && $0.consumedInputLength == 4
         })
-        #expect(PinyinEngine.shared.query(rawInput: "chenjingyi").contains {
+        #expect(engine.query(rawInput: "chenjingyi").contains {
             $0.text == "陈" && $0.consumedInputLength == 4
         })
     }
@@ -930,3 +933,167 @@ struct AetherKeyEngineTests {
     }
 }
 
+
+@Suite("Composition editing and persistent candidate preferences", .serialized)
+struct CompositionEditingTests {
+    @Test @MainActor
+    func editsMiddleAndPreservesCandidates() {
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("niha", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        #expect(client.markedSelection.location == 3)
+        _ = controller.inputText("o", client: client)
+        #expect(client.markedText == "nihoa")
+        #expect(client.markedSelection.location == 4)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 117), client: client)
+        #expect(client.markedText == "niho")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        _ = controller.inputText("a", client: client)
+        #expect(client.markedText == "nihao")
+        #expect(client.markedSelection.location == 4)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "你好")
+    }
+
+    @Test @MainActor
+    func syllableMovementAndDeletion() {
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("ni'hao", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123, modifiers: [.option]), client: client)
+        #expect(client.markedSelection.location == 3)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 51, modifiers: [.option]), client: client)
+        #expect(client.markedText == "hao")
+        #expect(client.markedSelection.location == 0)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 51), client: client)
+        #expect(client.markedText == "hao")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 119), client: client)
+        #expect(client.markedSelection.location == 3)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 115), client: client)
+        #expect(client.markedSelection.location == 0)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 124, modifiers: [.option]), client: client)
+        #expect(client.markedSelection.location == 3)
+        controller.resetComposition(client: client)
+    }
+
+    @Test @MainActor
+    func editingAfterPartialSelectionKeepsFullReading() throws {
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("jintiantianqi", client: client)
+        let candidates = PinyinEngine.shared.query(rawInput: "jintiantianqi")
+        let index = try #require(candidates.firstIndex { $0.text == "今天" && $0.consumedInputLength == 7 })
+        for _ in 0..<(index / 7) { _ = controller.handle(makeKeyEvent(char: "=", keyCode: 24), client: client) }
+        _ = controller.handle(makeKeyEvent(char: String(index % 7 + 1), keyCode: 18), client: client)
+        #expect(client.insertedText == "今天" && client.markedText == "tianqi")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        _ = controller.inputText("a", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 51), client: client)
+        #expect(client.markedText == "tianqi")
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "今天天气")
+        #expect(UserLexicon.shared.preferredWords(for: "jintiantianqi").contains("今天天气"))
+    }
+
+    @Test
+    func preferencesMigrateAndPersistInMutationOrder() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"frequencyTable":{"nihao":{"你好":3}},"customPhrases":{},"totalCommittedCharsCount":6}"#.utf8).write(to: url)
+        let lexicon = UserLexicon(storageURL: url)
+        #expect(lexicon.totalCommittedCharacters == 6)
+        #expect(lexicon.preferredWords(for: "nihao").contains("你好"))
+        for _ in 0..<30 {
+            lexicon.setPinned("拟好", for: "ni'hao", pinned: true)
+            lexicon.setPinned("拟好", for: "nihao", pinned: false)
+        }
+        lexicon.setPinned("拟好", for: "nihao", pinned: true)
+        lexicon.forget("你好", for: "nihao")
+        lexicon.flushPendingWrites()
+        let loaded = UserLexicon(storageURL: url)
+        #expect(loaded.isPinned("拟好", for: "nihao"))
+        #expect(loaded.isForgotten("你好", for: "ni'hao"))
+        #expect(!loaded.isForgotten("你好", for: "nh"))
+        let engine = PinyinEngine(userLexicon: loaded)
+        #expect(engine.query(rawInput: "nihao").first?.text == "拟好")
+        #expect(!engine.query(rawInput: "nihao").contains { $0.text == "你好" })
+        loaded.setPinned("你好", for: "nihao", pinned: true)
+        #expect(!loaded.isForgotten("你好", for: "nihao"))
+        loaded.flushPendingWrites()
+    }
+
+    @Test
+    func sentencesRetainAlternativesAndLearnLocalNames() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let lexicon = UserLexicon(storageURL: url)
+        let engine = PinyinEngine(userLexicon: lexicon)
+        let baseline = engine.query(rawInput: "jing'yishangban").prefix(5).map(\.text)
+        lexicon.addCustomPhrase(pinyin: "jingyi", phrase: "璟逸")
+        let learned = engine.query(rawInput: "jing'yishangban").prefix(5).map(\.text)
+        #expect(learned.first == "璟逸上班")
+        #expect(learned.contains { $0 != "璟逸上班" && $0.count == 4 })
+        #expect(baseline.first != learned.first)
+        lexicon.forget("璟逸", for: "jingyi")
+        #expect(!engine.query(rawInput: "jing'yishangban").prefix(5).contains { $0.text.hasPrefix("璟逸") })
+        lexicon.flushPendingWrites()
+    }
+
+    @Test
+    func sentenceAlternativesAvoidArbitrarySingleCharacterHomophones() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: url))
+        let candidates = engine.query(rawInput: "woxiangchifan").prefix(7).map(\.text)
+        #expect(candidates.first == "我想吃饭")
+        #expect(!candidates.contains("我向吃饭"))
+        #expect(!candidates.contains("我像吃饭"))
+        #expect(!candidates.contains("我想吃反"))
+        #expect(!candidates.contains("我相持饭"))
+        #expect(!candidates.contains("我相斥饭"))
+    }
+
+    @Test
+    func pinnedPrefixDoesNotDisplaceACompletePhrase() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let lexicon = UserLexicon(storageURL: url)
+        lexicon.setPinned("你", for: "ni", pinned: true)
+        let engine = PinyinEngine(userLexicon: lexicon)
+        #expect(engine.query(rawInput: "ni").first?.text == "你")
+        #expect(engine.query(rawInput: "nihao").first?.text == "你好")
+        lexicon.forget("你", for: "ni")
+        #expect(engine.query(rawInput: "nihao").first?.text == "你好")
+        #expect(!engine.query(rawInput: "nihao").contains { $0.text == "你" })
+        lexicon.flushPendingWrites()
+    }
+
+    @Test @MainActor
+    func managementShortcutsKeepCompositionAndCursor() {
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        let key = "ceshizhiding"
+        let word = "专用回归词"
+        let lexicon = UserLexicon.shared
+        lexicon.addCustomPhrase(pinyin: key, phrase: word)
+        defer {
+            lexicon.setPinned(word, for: key, pinned: true)
+            lexicon.setPinned(word, for: key, pinned: false)
+            lexicon.removeCustomPhrase(pinyin: key, phrase: word)
+        }
+        _ = controller.inputText(key, client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        let location = client.markedSelection.location
+        #expect(controller.handle(makeKeyEvent(char: "p", keyCode: 35, modifiers: [.control, .option]), client: client))
+        #expect(lexicon.isPinned(word, for: key))
+        #expect(client.markedText == key && client.markedSelection.location == location)
+        #expect(client.insertedText.isEmpty)
+        _ = controller.handle(makeKeyEvent(char: "u", keyCode: 32, modifiers: [.control, .option]), client: client)
+        #expect(!lexicon.isPinned(word, for: key))
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 51, modifiers: [.control, .option]), client: client)
+        #expect(lexicon.isForgotten(word, for: key))
+        #expect(!PinyinEngine.shared.query(rawInput: key).contains { $0.text == word })
+        #expect(client.markedText == key && client.insertedText.isEmpty)
+        controller.resetComposition(client: client)
+    }
+}

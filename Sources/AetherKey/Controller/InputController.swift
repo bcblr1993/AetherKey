@@ -16,6 +16,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     
     // MARK: - State Management
     private var buffer: String = ""
+    private var compositionCursor: Int = 0
     private var originalFullBuffer: String = ""
     private var partialComposedText: String = ""
     private var inputMode: InputMode = .chinese
@@ -70,7 +71,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let settings = AetherSettings.shared
         
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.1") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.2") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -185,6 +186,16 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             shiftSoleModifier = false
         }
         
+        // Candidate management never commits the composition or reaches the host app.
+        if !buffer.isEmpty, flagsForManagement(event) {
+            switch event.keyCode {
+            case 35: manageSelectedCandidate(.pin, client: sender); return true
+            case 32: manageSelectedCandidate(.unpin, client: sender); return true
+            case 51: manageSelectedCandidate(.forget, client: sender); return true
+            default: break
+            }
+        }
+
         // Pass through Command / Control keyboard shortcuts instantly
         let flags = event.modifierFlags
         if flags.contains(.command) || flags.contains(.control) {
@@ -207,7 +218,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             switch keyCode {
             // Backspace / Delete
             case 51:
-                buffer.removeLast()
+                let start = flags.contains(.option) ? previousSyllableBoundary() : max(0, compositionCursor - 1)
+                replaceComposition(start..<compositionCursor, with: "")
                 if buffer.isEmpty {
                     resetComposition(client: sender)
                 } else {
@@ -215,6 +227,21 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 }
                 return true
                 
+            // Forward Delete, Home and End edit the marked pinyin, not the document.
+            case 117:
+                if compositionCursor < buffer.count {
+                    replaceComposition(compositionCursor..<(compositionCursor + 1), with: "")
+                    updateCandidates(client: sender)
+                }
+                return true
+            case 115:
+                compositionCursor = 0
+                updateClientMarkedText(client: sender); renderPanel(client: sender)
+                return true
+            case 119:
+                compositionCursor = buffer.count
+                updateClientMarkedText(client: sender); renderPanel(client: sender)
+                return true
             // Escape
             case 53:
                 resetComposition(client: sender)
@@ -242,10 +269,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 
             // Left Arrow / Right Arrow
             case 123:
-                moveSelection(delta: -1, client: sender)
+                compositionCursor = flags.contains(.option) ? previousSyllableBoundary() : max(0, compositionCursor - 1)
+                updateClientMarkedText(client: sender); renderPanel(client: sender)
                 return true
             case 124:
-                moveSelection(delta: 1, client: sender)
+                compositionCursor = flags.contains(.option) ? nextSyllableBoundary() : min(buffer.count, compositionCursor + 1)
+                updateClientMarkedText(client: sender); renderPanel(client: sender)
                 return true
                 
             // Page Previous: '-' (without Shift, outside v-mode) or PageUp (116)
@@ -297,7 +326,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 }
                 
                 // Lowercase 'a'...'z' or 'v' -> Begin composition
-                buffer.append(characters.lowercased())
+                insertComposition(characters.lowercased())
                 originalFullBuffer = buffer
                 partialComposedText = ""
                 updateCandidates(client: sender)
@@ -327,7 +356,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         if let char = characters.first, char.isNumber, let digit = char.wholeNumberValue, digit >= 1 && digit <= 9 {
             // In v-mode, digits are part of the mathematical/RMB expression!
             if buffer.hasPrefix("v") {
-                buffer.append(char)
+                insertComposition(String(char))
                 updateCandidates(client: sender)
                 return true
             }
@@ -342,7 +371,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         // If in v-mode and '0' is typed
         if buffer.hasPrefix("v"), let char = characters.first, char == "0" {
-            buffer.append(char)
+            insertComposition(String(char))
             updateCandidates(client: sender)
             return true
         }
@@ -351,7 +380,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         if let firstChar = characters.first {
             if firstChar.isLetter || firstChar == "'" || (buffer.hasPrefix("v") && "+-*/.()^%".contains(firstChar)) {
                 let toAppend = buffer.hasPrefix("v") ? characters : characters.lowercased()
-                buffer.append(toAppend)
+                insertComposition(toAppend)
                 if partialComposedText.isEmpty {
                     originalFullBuffer = buffer
                 }
@@ -394,7 +423,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         commitDirect(text: formatted, client: sender)
                         handled = true
                     } else {
-                        buffer.append(lowerChar)
+                        insertComposition(String(lowerChar))
                         originalFullBuffer = buffer
                         partialComposedText = ""
                         updateCandidates(client: sender)
@@ -413,7 +442,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     commitRaw(client: sender)
                     handled = true
                 } else if buffer.hasPrefix("v") && (char.isNumber || "+-*/.()^%".contains(char)) {
-                    buffer.append(char)
+                    insertComposition(String(char))
                     updateCandidates(client: sender)
                     handled = true
                 } else if let digit = char.wholeNumberValue, digit >= 1 && digit <= 9 {
@@ -424,7 +453,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         handled = true
                     }
                 } else if lowerChar.isLetter || lowerChar == "'" {
-                    buffer.append(buffer.hasPrefix("v") ? char : lowerChar)
+                    insertComposition(String(buffer.hasPrefix("v") ? char : lowerChar))
                     if partialComposedText.isEmpty {
                         originalFullBuffer = buffer
                     }
@@ -441,6 +470,59 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             }
         }
         return handled
+    }
+
+    private func replaceComposition(_ range: Range<Int>, with text: String) {
+        let start = buffer.index(buffer.startIndex, offsetBy: range.lowerBound)
+        let end = buffer.index(buffer.startIndex, offsetBy: range.upperBound)
+        buffer.replaceSubrange(start..<end, with: text)
+        compositionCursor = range.lowerBound + text.count
+        // Rebuild the full reading after an edit, including already selected prefixes.
+        if partialComposedText.isEmpty {
+            originalFullBuffer = buffer
+        } else {
+            let consumedLength = max(0, originalFullBuffer.count - (buffer.count - text.count + range.count))
+            originalFullBuffer = String(originalFullBuffer.prefix(consumedLength)) + buffer
+        }
+    }
+
+    private func insertComposition(_ text: String) {
+        replaceComposition(compositionCursor..<compositionCursor, with: text)
+    }
+
+    private func previousSyllableBoundary() -> Int {
+        let boundaries = [0] + PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
+        return boundaries.last(where: { $0 < compositionCursor }) ?? 0
+    }
+
+    private func nextSyllableBoundary() -> Int {
+        PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
+            .first(where: { $0 > compositionCursor }) ?? buffer.count
+    }
+
+    private func flagsForManagement(_ event: NSEvent) -> Bool {
+        event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.control, .option]
+    }
+
+    private func candidateReading(_ candidate: Candidate) -> String {
+        String(buffer.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : buffer.count))
+    }
+
+    private func manageSelectedCandidate(_ action: CandidateAction, client: Any?) {
+        let candidates = candidatesForCurrentPage()
+        guard candidates.indices.contains(selectedIndexInPage) else { return }
+        manageCandidate(candidates[selectedIndexInPage], action: action, client: client)
+    }
+
+    private func manageCandidate(_ candidate: Candidate, action: CandidateAction, client: Any?) {
+        guard !buffer.hasPrefix("v"), !candidate.isEmoji, candidate.comment != "英" else { return }
+        let reading = candidateReading(candidate)
+        switch action {
+        case .pin: UserLexicon.shared.setPinned(candidate.text, for: reading, pinned: true)
+        case .unpin: UserLexicon.shared.setPinned(candidate.text, for: reading, pinned: false)
+        case .forget: UserLexicon.shared.forget(candidate.text, for: reading)
+        }
+        updateCandidates(client: client)
     }
 
     // MARK: - Shift Single-Tap Toggle
@@ -581,6 +663,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             
             partialComposedText += candidate.text
             buffer = String(buffer.dropFirst(consumed))
+            compositionCursor = buffer.count
             updateCandidates(client: targetClient)
             return
         }
@@ -631,7 +714,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let text = buffer
         textInput.setMarkedText(
             text,
-            selectionRange: NSRange(location: text.count, length: 0),
+            selectionRange: NSRange(location: String(text.prefix(compositionCursor)).utf16.count, length: 0),
             replacementRange: NSRange(location: NSNotFound, length: 0)
         )
     }
@@ -651,6 +734,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private func clearState() {
         lastCompositionCaretRect = nil
         buffer = ""
+        compositionCursor = 0
         originalFullBuffer = ""
         partialComposedText = ""
         allCandidates.removeAll()
@@ -741,6 +825,19 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 if idx >= 0 && idx < pageCands.count {
                     self.commitCandidate(pageCands[idx], client: self.activeClient)
                 }
+            }
+            panel.state.onCandidateAction = { index, action in
+                guard let self else { return }
+                let candidates = self.candidatesForCurrentPage()
+                guard candidates.indices.contains(index) else { return }
+                self.manageCandidate(candidates[index], action: action, client: self.activeClient)
+            }
+            panel.state.isCandidatePinned = { index in
+                guard let self else { return false }
+                let candidates = self.candidatesForCurrentPage()
+                guard candidates.indices.contains(index) else { return false }
+                let candidate = candidates[index]
+                return UserLexicon.shared.isPinned(candidate.text, for: self.candidateReading(candidate))
             }
             panel.state.onToggleViewMode = {
                 self?.toggleViewMode(client: self?.activeClient)

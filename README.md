@@ -24,7 +24,7 @@
 
 ## 应用内更新
 
-从输入法菜单或设置「更新与启动」中的「检查更新」进入；自动检查默认每 6 小时一次，可在设置中关闭。更新归档只包含输入法本体，使用 Ed25519 验证后安装并重新启动，保留个人词库与偏好。1.0.0 用户需要手动安装一次 1.0.1。支持登录后自动启动，设置页显示 macOS 实际注册状态。
+从输入法菜单或设置「更新与启动」中的「检查更新」进入；自动检查默认每 6 小时一次，可在设置中关闭。更新归档只包含输入法本体，使用 Ed25519 验证后安装并重新启动，保留个人词库与偏好。1.0.0 用户需要手动安装一次当前版本；1.0.1 及以上可直接应用内更新。支持登录后自动启动，设置页显示 macOS 实际注册状态。
 
 Sparkle 2.10.0 使用 MIT 许可；完整许可随安装包提供。发布密钥保存在 macOS 钥匙串 `AetherKey` 账户中，不进入仓库。
 
@@ -40,3 +40,14 @@ xcodebuild -project AetherKey.xcodeproj -scheme AetherSetup -configuration Relea
 正式发布：`scripts/release.sh`。需要有效的 Developer ID Application 身份与 Notarytool Keychain profile；通过 `SIGN_IDENTITY`、`NOTARY_PROFILE` 和 `RELEASE_OUT` 指定。该脚本按嵌套顺序签名、公证并装订票据，再生成签名公证 DMG。
 
 字音数据可用 `scripts/build_character_lexicon.py` 从固定 SHA256 的 Unihan 17.0.0 压缩包重新生成。Unicode 数据许可随资源提供：`Resources/Unihan-LICENSE.txt` 与 `Resources/Unicode-LICENSE.txt`。源码公开供审阅；未另行声明开放源代码许可证。
+
+### 拼音编辑与候选管理
+
+- `← / →` 在拼音串内移动，`Option + ← / →` 按音节移动，`Home / End` 到开头或末尾。
+- `Delete` 删除光标前一个字母，`Option + Delete` 删除前一个音节，向前删除键删除光标后的字母。
+- `↑ / ↓ / Tab / Shift + Tab` 选择候选，空格上屏，`- / =` 翻页。
+- 右键候选词可置顶、取消置顶或忘记；键盘对应 `Control + Option + P / U / Delete`，作用于当前高亮词。
+- 置顶与忘记按拼音分别保存，忘记会移除该拼音下的学习、自定义和置顶记录，并隐藏同名候选。需要恢复时，可在词库中心重新添加该拼音和短语。
+- 整句组词保留多条词组组合，结合词典顺序、词组完整度与本机选词记录排序；不使用联网语言模型。
+
+1.0.2 新增拼音中间编辑、整句候选组合优化、候选词置顶与忘记；保留光标跟随和自适应面板。
