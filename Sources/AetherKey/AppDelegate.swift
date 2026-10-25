@@ -128,6 +128,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         punctItem.state = settings.isSmartPunctuationEnabled ? .on : .off
         menu.addItem(punctItem)
         
+        let englishPunctItem = NSMenuItem(title: "中文使用英文标点", action: #selector(toggleEnglishPunctuation), keyEquivalent: ".")
+        englishPunctItem.keyEquivalentModifierMask = [.control]
+        englishPunctItem.target = self
+        englishPunctItem.state = settings.isEnglishPunctuationEnabled ? .on : .off
+        menu.addItem(englishPunctItem)
+
         let fuzzyItem = NSMenuItem(title: "模糊音智能纠错", action: #selector(toggleFuzzy), keyEquivalent: "")
         fuzzyItem.target = self
         fuzzyItem.state = settings.isFuzzyPinyinEnabled ? .on : .off
@@ -190,6 +196,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         AetherSettings.shared.isSmartPunctuationEnabled.toggle()
     }
     
+    @objc private func toggleEnglishPunctuation() {
+        AetherSettings.shared.isEnglishPunctuationEnabled.toggle()
+    }
+
     @objc private func toggleFuzzy() {
         AetherSettings.shared.isFuzzyPinyinEnabled.toggle()
     }

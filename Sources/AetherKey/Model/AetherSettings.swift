@@ -5,11 +5,12 @@ import Combine
 public final class AetherSettings: ObservableObject, @unchecked Sendable {
     public static let shared = AetherSettings()
     
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     
     private enum Keys {
         static let pinyinScheme = "aetherkey.settings.pinyinScheme"
         static let panguSpacing = "aetherkey.settings.panguSpacing"
+        static let englishPunctuation = "aetherkey.settings.englishPunctuation"
         static let smartPunctuation = "aetherkey.settings.smartPunctuation"
         static let fuzzyPinyin = "aetherkey.settings.fuzzyPinyin"
         static let autoEnglishInTerminal = "aetherkey.settings.autoEnglishInTerminal"
@@ -29,6 +30,18 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         didSet { defaults.set(isSmartPunctuationEnabled, forKey: Keys.smartPunctuation) }
     }
     
+    /// Keep Chinese composition while emitting ASCII punctuation. Off by default.
+    @Published public var isEnglishPunctuationEnabled: Bool {
+        didSet {
+            defaults.set(isEnglishPunctuationEnabled, forKey: Keys.englishPunctuation)
+            if oldValue != isEnglishPunctuationEnabled { SmartPunctuation.shared.resetState() }
+        }
+    }
+
+    public var usesChinesePunctuation: Bool {
+        isSmartPunctuationEnabled && !isEnglishPunctuationEnabled
+    }
+
     @Published public var isFuzzyPinyinEnabled: Bool {
         didSet { defaults.set(isFuzzyPinyinEnabled, forKey: Keys.fuzzyPinyin) }
     }
@@ -45,7 +58,9 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         didSet { defaults.set(defaultViewMode.rawValue, forKey: Keys.defaultViewMode) }
     }
     
-    private init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.isEnglishPunctuationEnabled = defaults.bool(forKey: Keys.englishPunctuation)
         self.pinyinScheme = PinyinScheme(rawValue: defaults.string(forKey: Keys.pinyinScheme) ?? "full") ?? .full
         if defaults.object(forKey: Keys.panguSpacing) == nil {
             defaults.set(true, forKey: Keys.panguSpacing)
@@ -77,6 +92,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         pinyinScheme = .full
         isPanguSpacingEnabled = true
         isSmartPunctuationEnabled = true
+        isEnglishPunctuationEnabled = false
         isFuzzyPinyinEnabled = true
         isAutoEnglishInTerminalEnabled = true
         isUserLearningEnabled = true

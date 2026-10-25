@@ -1140,9 +1140,55 @@ public struct SyllableToken: Sendable, Equatable {
     public let isComplete: Bool
 }
 
-/// Fast Chinese Pinyin segmentation and candidate generation engine for AetherKey.
-/// Supports dynamic syllable segmentation, DP sentence composition, incremental prefix matching,
-/// Jianpin abbreviations, fuzzy pinyin, user frequency learning, and partial prefix selection.
+/// Bounded, on-device dictionary continuation lookup. No surrounding text is persisted.
+enum PinyinContext {
+    static func suffix(_ text: String) -> String {
+        String(text.reversed().prefix(while: { char in
+            char.unicodeScalars.allSatisfy { scalar in
+                (0x3400...0x4DBF).contains(scalar.value) || (0x4E00...0x9FFF).contains(scalar.value)
+                    || (0x20000...0x323AF).contains(scalar.value)
+            }
+        }).prefix(4).reversed())
+    }
+
+    private static let readings: [Character: [String]] = {
+        var rows: [Character: [(String, Int)]] = [:]
+        for (reading, characters) in PinyinLexicon.syllablesChars {
+            for (rank, text) in characters.enumerated() where text.count == 1 {
+                rows[text.first!, default: []].append((reading, rank))
+            }
+        }
+        return rows.mapValues { values in
+            values.sorted { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 < $1.1 }.map(\.0)
+        }
+    }()
+
+    static func preload() { _ = readings.count }
+
+    static func continuations(input: String, precedingText: String) -> [String] {
+        let context = suffix(precedingText)
+        guard !context.isEmpty, input.allSatisfy({ $0.isASCII && ($0.isLetter || $0 == "'") }) else { return [] }
+        let code = input.replacingOccurrences(of: "'", with: "")
+        var result: [String] = []; var seen = Set<String>()
+        for count in stride(from: context.count, through: 1, by: -1) {
+            let prefix = String(context.suffix(count))
+            var variants = [""]
+            for char in prefix {
+                guard let choices = readings[char] else { variants = []; break }
+                variants = Array(variants.flatMap { base in choices.map { base + $0 } }.prefix(32))
+            }
+            for reading in variants {
+                for phrase in PinyinLexicon.commonPhrases[reading + code] ?? [] where phrase.hasPrefix(prefix) {
+                    let rest = String(phrase.dropFirst(count))
+                    if !rest.isEmpty, seen.insert(rest).inserted { result.append(rest) }
+                }
+            }
+        }
+        return result
+    }
+}
+
+/// Pinyin segmentation, sentence composition, contextual ranking and partial selection.
 public final class PinyinEngine: Sendable {
     public static let shared = PinyinEngine()
     
@@ -1171,6 +1217,7 @@ public final class PinyinEngine: Sendable {
         _ = PinyinLexicon.commonPhrases.count
         _ = PinyinLexicon.syllablesChars.count
         _ = userLexicon.learnedEntryCount
+        PinyinContext.preload()
     }
     
     /// Dynamic programming based maximal syllable segmenter (compatibility API).
@@ -1418,7 +1465,7 @@ public final class PinyinEngine: Sendable {
     }
 
     /// Queries candidate list for given raw pinyin buffer.
-    public func query(rawInput: String) -> [Candidate] {
+    public func query(rawInput: String, precedingText: String = "") -> [Candidate] {
         let input = rawInput.lowercased().replacingOccurrences(of: "ü", with: "v").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return [] }
         
@@ -1442,11 +1489,22 @@ public final class PinyinEngine: Sendable {
         let stripped = input.replacingOccurrences(of: "'", with: "")
         let hasExplicitApostrophe = input.contains("'")
         
+        // Context comes from the text immediately before this composition only.
+        for word in PinyinContext.continuations(input: input, precedingText: precedingText) {
+            addCandidate(word: word)
+        }
+
         // 0. User-learned / custom phrases highest priority
         for userWord in userLexicon.preferredWords(for: stripped) {
             addCandidate(word: userWord)
         }
         
+        // An exact syllable exposes its full character set regardless of segmentation.
+        if !hasExplicitApostrophe, PinyinLexicon.initialExpansions[stripped] == nil,
+           let characters = PinyinLexicon.syllablesChars[stripped] {
+            for character in characters { addCandidate(word: character) }
+        }
+
         // 1. Direct match in high-frequency phrase lexicon
         // If user explicitly typed apostrophe (e.g. "xi'an"), prioritize multi-character words (like "西安") over single-char "xian" ("先")
         if hasExplicitApostrophe {
@@ -1478,50 +1536,6 @@ public final class PinyinEngine: Sendable {
             }
         }
         
-        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (an<->ang, en<->eng, in<->ing, gn->ng, mg->ng, uen->un, iou->iu, uei->ui)
-        if AetherSettings.shared.isFuzzyPinyinEnabled {
-            var fuzzyKeys: [String] = []
-            for (typo, corr) in [("gn", "ng"), ("mg", "ng"), ("uen", "un"), ("iou", "iu"), ("uei", "ui")] {
-                if stripped.contains(typo) {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: typo, with: corr))
-                }
-            }
-            if stripped.contains("an") && !stripped.contains("ang") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
-            } else if stripped.contains("ang") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
-            }
-            if stripped.contains("en") && !stripped.contains("eng") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
-            } else if stripped.contains("eng") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
-            }
-            if stripped.contains("in") && !stripped.contains("ing") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
-            } else if stripped.contains("ing") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
-            }
-            
-            for fKey in fuzzyKeys {
-                if let corePhrases = PinyinLexicon.builtinCorePhrases[fKey] {
-                    for word in corePhrases {
-                        addCandidate(word: word)
-                    }
-                }
-                if let phrases = PinyinLexicon.commonPhrases[fKey] {
-                    for word in phrases {
-                        addCandidate(word: word)
-                    }
-                }
-            }
-        }
-        
-        // An exact syllable exposes its full character set regardless of segmentation.
-        if !hasExplicitApostrophe, PinyinLexicon.initialExpansions[stripped] == nil,
-           let characters = PinyinLexicon.syllablesChars[stripped] {
-            for character in characters { addCandidate(word: character) }
-        }
-
         // 4. Tokenize into syllables / prefixes and run sentence & phrase synthesis
         let tokens = segmentTokens(rawInput: input)
         if !tokens.isEmpty {
@@ -1654,21 +1668,63 @@ public final class PinyinEngine: Sendable {
             for character in characters { addCandidate(word: character) }
         }
 
+        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (an<->ang, en<->eng, in<->ing, gn->ng, mg->ng, uen->un, iou->iu, uei->ui)
+        if AetherSettings.shared.isFuzzyPinyinEnabled {
+            var fuzzyKeys: [String] = []
+            for (typo, corr) in [("gn", "ng"), ("mg", "ng"), ("uen", "un"), ("iou", "iu"), ("uei", "ui")] {
+                if stripped.contains(typo) {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: typo, with: corr))
+                }
+            }
+            if stripped.contains("an") && !stripped.contains("ang") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
+            } else if stripped.contains("ang") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
+            }
+            if stripped.contains("en") && !stripped.contains("eng") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
+            } else if stripped.contains("eng") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
+            }
+            if stripped.contains("in") && !stripped.contains("ing") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
+            } else if stripped.contains("ing") {
+                fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
+            }
+
+            for fKey in fuzzyKeys {
+                if let corePhrases = PinyinLexicon.builtinCorePhrases[fKey] {
+                    for word in corePhrases {
+                        addCandidate(word: word)
+                    }
+                }
+                if let phrases = PinyinLexicon.commonPhrases[fKey] {
+                    for word in phrases {
+                        addCandidate(word: word)
+                    }
+                }
+            }
+        }
+
+
         candidates = CandidateRanking.merge(text: candidates, input: input)
         // Reapply explicit preferences after Emoji interleaving; stable order for all others.
         var pinnedCandidates: [Candidate] = []
+        var customCandidates: [Candidate] = []
         var otherCandidates: [Candidate] = []
         for candidate in candidates {
             let reading = String(input.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : fullInputCount))
             guard !userLexicon.isForgotten(candidate.text, for: reading) else { continue }
-            if (candidate.consumedInputLength == 0 || candidate.consumedInputLength == fullInputCount),
-               userLexicon.isPinned(candidate.text, for: reading) {
+            let consumesFullInput = candidate.consumedInputLength == 0 || candidate.consumedInputLength == fullInputCount
+            if consumesFullInput, userLexicon.isPinned(candidate.text, for: reading) {
                 pinnedCandidates.append(candidate)
+            } else if consumesFullInput, userLexicon.isExplicitPreference(candidate.text, for: reading) {
+                customCandidates.append(candidate)
             } else {
                 otherCandidates.append(candidate)
             }
         }
-        candidates = pinnedCandidates + otherCandidates
+        candidates = pinnedCandidates + customCandidates + otherCandidates
 
         // 5. English raw buffer fallback
         if !seenWords.contains(rawInput) {

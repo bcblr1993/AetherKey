@@ -193,6 +193,12 @@ public struct PreferencesView: View {
                 )
                 
                 settingToggleRow(
+                    title: "中文使用英文标点",
+                    desc: "默认关闭。开启后保持中文输入，使用 , . ? ! 等英文标点；Ctrl + . 随时切换，不会提交正在编辑的拼音。",
+                    isOn: $settings.isEnglishPunctuationEnabled
+                )
+
+                settingToggleRow(
                     title: "模糊音智能纠错 (Fuzzy Pinyin)",
                     desc: "自动兼容平翘舌 (z/zh, c/ch, s/sh) 与前后鼻音 (an/ang, en/eng, in/ing) 混输。",
                     isOn: $settings.isFuzzyPinyinEnabled
@@ -347,6 +353,7 @@ public struct PreferencesView: View {
                     .foregroundStyle(Color.white)
                 
                 shortcutRow(key: "单击 Shift", desc: "在中 / 英输入模式间瞬间无缝切换")
+                shortcutRow(key: "Ctrl + . (⌃.)", desc: "切换中文 / 英文标点，保留当前拼音和候选")
                 shortcutRow(key: "Shift + 字母", desc: "中文模式下直接输入大写英文字母")
                 shortcutRow(key: "Option + Tab (⌥Tab)", desc: "在「翻页模式 (7词)」与「卷轴模式 (14词)」间切换")
                 shortcutRow(key: "空格键 (Space)", desc: "首选词或高亮词极速上屏")

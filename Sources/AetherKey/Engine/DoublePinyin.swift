@@ -86,8 +86,8 @@ public enum DoublePinyin {
         if scheme == .full { return raw }
         return tokens(raw, scheme: scheme)?.map(\.reading).joined(separator: "'") ?? raw
     }
-    public static func query(_ raw: String, scheme: PinyinScheme) -> [Candidate] {
-        guard scheme != .full else { return PinyinEngine.shared.query(rawInput: raw) }
+    public static func query(_ raw: String, scheme: PinyinScheme, precedingText: String = "") -> [Candidate] {
+        guard scheme != .full else { return PinyinEngine.shared.query(rawInput: raw, precedingText: precedingText) }
         guard let tokens = tokens(raw, scheme: scheme), !tokens.isEmpty else {
             return [Candidate(text: raw, comment: "英", consumedInputLength: raw.count)]
         }
@@ -105,7 +105,7 @@ public enum DoublePinyin {
                 boundaries.append((end + (index < tokens.count - 1 ? 1 : 0), tokens[index].rawEnd))
                 if index < tokens.count - 1 { end += 1 }
             }
-            for candidate in PinyinEngine.shared.query(rawInput: decoded) where candidate.comment != "英" {
+            for candidate in PinyinEngine.shared.query(rawInput: decoded, precedingText: precedingText) where candidate.comment != "英" {
                 let consumed = candidate.consumedInputLength > 0 ? candidate.consumedInputLength : decoded.count
                 guard let boundary = boundaries.first(where: { $0.end >= consumed }), seen.insert(candidate.text).inserted else { continue }
                 result.append(Candidate(text: candidate.text, comment: candidate.comment,

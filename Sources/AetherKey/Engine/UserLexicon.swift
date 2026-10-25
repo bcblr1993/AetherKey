@@ -159,6 +159,13 @@ public final class UserLexicon: @unchecked Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Explicit choices outrank context; ordinary frequency learning does not.
+    public func isExplicitPreference(_ word: String, for pinyin: String) -> Bool {
+        let key = pinyin.lowercased().replacingOccurrences(of: "'", with: "")
+        lock.lock(); defer { lock.unlock() }
+        return (pinnedWords[key] ?? []).contains(word) || (customPhrases[key] ?? []).contains(word)
+    }
+
     public func isPinned(_ word: String, for pinyin: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         return (pinnedWords[normalized(pinyin)] ?? []).contains(word)

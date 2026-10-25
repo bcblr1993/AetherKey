@@ -2,7 +2,7 @@ import AppKit
 import Carbon
 import CoreGraphics
 
-// Run in the dedicated QA VM only, with user-authorized CGEvent access.
+// Run only on a designated QA machine, with user-authorized CGEvent access.
 // Focus TextEdit on this script's test document first. Every keystroke checks focus.
 func abort(_ message: String) -> Never { print("ABORT:", message); exit(2) }
 let args = CommandLine.arguments
@@ -42,6 +42,9 @@ let codes: [Character: CGKeyCode] = ["a":0,"b":11,"c":8,"d":2,"e":14,"f":3,"g":5
 func type(_ text: String) { for c in text { key(codes[c]!) } }
 switch action {
 case "type": type(args[2])
+case "toggle-punctuation": key(47, [.maskControl])
+case "punctuation": key(43); key(47); key(44); key(41)
+case "quotes": key(39, [.maskShift]); key(39, [.maskShift])
 case "key": key(CGKeyCode(args[2])!)
 case "pin": key(35, [.maskControl, .maskAlternate])
 case "unpin": key(32, [.maskControl, .maskAlternate])

@@ -12,6 +12,8 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     var markedText: String = ""
     var markedSelection: NSRange = NSRange(location: 0, length: 0)
     var lastReplacementRange: NSRange = NSRange(location: NSNotFound, length: NSNotFound)
+    var contextText: String?
+    var canReadSurroundingText = true
     var attributesCaretRect: NSRect?
     var lastFirstRectRange: NSRange?
     var caretRect: NSRect = NSRect(x: 200, y: 500, width: 0, height: 22)
@@ -19,6 +21,7 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     func insertText(_ string: Any!, replacementRange: NSRange) {
         if let str = string as? String {
             insertedText += str
+            if contextText != nil { contextText! += str }
         }
         self.lastReplacementRange = replacementRange
     }
@@ -32,7 +35,7 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     }
     
     func selectedRange() -> NSRange {
-        return NSRange(location: 0, length: 0)
+        return NSRange(location: (contextText ?? "" as String).utf16.count, length: 0)
     }
     
     func markedRange() -> NSRange {
@@ -40,7 +43,10 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     }
     
     func attributedSubstring(from range: NSRange) -> NSAttributedString? {
-        return nil
+        guard canReadSurroundingText, let text = contextText,
+              range.location >= 0, range.location <= text.utf16.count,
+              range.length <= text.utf16.count - range.location else { return nil }
+        return NSAttributedString(string: (text as NSString).substring(with: range))
     }
     
     func length() -> Int {
@@ -936,6 +942,167 @@ struct AetherKeyEngineTests {
 
 @Suite("Composition editing and persistent candidate preferences", .serialized)
 struct CompositionEditingTests {
+    @Test @MainActor
+    func exactSyllablesOutrankAmbiguousAndFuzzyPhrases() {
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
+        for (input, first, ambiguous) in [("jian", "见", "积案"), ("jiang", "将", "激昂"), ("xian", "现", "西安")] {
+            let rows = engine.query(rawInput: input).map(\.text)
+            #expect(rows.first == first)
+            #expect(rows.firstIndex(of: first)! < rows.firstIndex(of: ambiguous)!)
+        }
+        #expect(engine.query(rawInput: "xi'an").first?.text == "西安")
+        #expect(engine.query(rawInput: "jian").contains { $0.text == "键" })
+    }
+
+    @Test @MainActor
+    func dictionaryContextWorksAcrossWordsAndPolyphonicReadings() {
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
+        let cases = [("快捷", "jian", "键"), ("一", "jian", "件"), ("看", "jian", "见"),
+                     ("文", "jian", "件"), ("时", "jian", "间"), ("人", "min", "民"),
+                     ("安", "quan", "全"), ("回", "jia", "家"), ("银", "hang", "行"),
+                     ("输入", "fa", "法"), ("编", "ji", "辑"), ("专", "jia", "家")]
+        for (context, input, expected) in cases {
+            #expect(engine.query(rawInput: input, precedingText: context).first?.text == expected, "\(context) + \(input)")
+        }
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷，").first?.text == "见")
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷 ").first?.text == "见")
+    }
+
+    @Test @MainActor
+    func contextHonorsExplicitPreferencesAndForgetting() {
+        let store = UserLexicon(storageURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let engine = PinyinEngine(userLexicon: store)
+        store.recordCommit(pinyin: "jian", word: "件")
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷").first?.text == "键")
+        store.setPinned("件", for: "jian", pinned: true)
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷").first?.text == "件")
+        store.setPinned("件", for: "jian", pinned: false)
+        store.forget("键", for: "jian")
+        #expect(!engine.query(rawInput: "jian", precedingText: "快捷").contains { $0.text == "键" })
+        store.addCustomPhrase(pinyin: "jian", phrase: "自定义")
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷").first?.text == "自定义")
+        store.addCustomPhrase(pinyin: "jian", phrase: "键")
+        store.setPinned("件", for: "jian", pinned: true)
+        #expect(engine.query(rawInput: "jian", precedingText: "快捷").first?.text == "件")
+    }
+
+    @Test @MainActor
+    func controllerReadsActualCaretContextAndDiscardsStaleContext() {
+        let settings = AetherSettings.shared; let previous = settings.pinyinScheme
+        defer { settings.pinyinScheme = previous }; settings.pinyinScheme = .full
+        let client = MockTextInputClient(); client.contextText = "快捷"
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("jian", client: client)
+        #expect(CandidatePanelHolder.shared.state.candidates.first?.text == "键")
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "键")
+        client.contextText = "文"
+        _ = controller.inputText("jian", client: client)
+        #expect(CandidatePanelHolder.shared.state.candidates.first?.text == "件")
+        controller.resetComposition(client: client)
+        client.contextText = "快捷，"
+        let withoutContext = PinyinEngine.shared.query(rawInput: "jian").prefix(7).map(\.text)
+        _ = controller.inputText("jian", client: client)
+        #expect(CandidatePanelHolder.shared.state.candidates.map(\.text) == withoutContext)
+        controller.resetComposition(client: client)
+    }
+
+    @Test @MainActor
+    func fallbackContextRequiresUnchangedCaretAndSupportsBothDoublePinyinSchemes() {
+        let settings = AetherSettings.shared; let previous = settings.pinyinScheme
+        defer { settings.pinyinScheme = previous }
+        settings.pinyinScheme = .full
+        let client = MockTextInputClient(); client.contextText = ""; client.canReadSurroundingText = false
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("tian", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        _ = controller.inputText("qi", client: client)
+        #expect(CandidatePanelHolder.shared.state.candidates.first?.text == "气")
+        controller.resetComposition(client: client)
+        client.contextText = "其他位置"
+        _ = controller.inputText("qi", client: client)
+        #expect(CandidatePanelHolder.shared.state.candidates.first?.text != "气")
+        controller.resetComposition(client: client)
+        for scheme in [PinyinScheme.flypy, .microsoft] {
+            #expect(DoublePinyin.query("jm", scheme: scheme, precedingText: "快捷").first?.text == "键")
+        }
+    }
+
+    @Test @MainActor
+    func englishPunctuationPreferenceDefaultsPersistsAndResets() throws {
+        let name = "AetherKey.PunctuationTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AetherSettings(defaults: defaults)
+        #expect(!settings.isEnglishPunctuationEnabled)
+        #expect(settings.usesChinesePunctuation)
+        settings.isEnglishPunctuationEnabled = true
+        #expect(AetherSettings(defaults: defaults).isEnglishPunctuationEnabled)
+        #expect(!settings.usesChinesePunctuation)
+        settings.resetToDefaults()
+        #expect(!AetherSettings(defaults: defaults).isEnglishPunctuationEnabled)
+    }
+
+    @Test @MainActor
+    func punctuationShortcutPreservesCompositionAndUsesSelectedStyle() {
+        let settings = AetherSettings.shared
+        let previous = settings.isEnglishPunctuationEnabled
+        let smart = settings.isSmartPunctuationEnabled
+        let scheme = settings.pinyinScheme
+        defer {
+            settings.isEnglishPunctuationEnabled = previous
+            settings.isSmartPunctuationEnabled = smart
+            settings.pinyinScheme = scheme
+        }
+        settings.pinyinScheme = .full
+        settings.isSmartPunctuationEnabled = true
+        settings.isEnglishPunctuationEnabled = false
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("nihao", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        let caret = client.markedSelection
+        let candidates = CandidatePanelHolder.shared.state.candidates.map(\.text)
+        #expect(controller.handle(makeKeyEvent(char: ".", keyCode: 47, modifiers: [.control]), client: client))
+        #expect(settings.isEnglishPunctuationEnabled)
+        #expect(client.insertedText.isEmpty)
+        #expect(client.markedText == "nihao")
+        #expect(client.markedSelection == caret)
+        #expect(CandidatePanelHolder.shared.state.candidates.map(\.text) == candidates)
+        #expect(controller.handle(makeKeyEvent(char: ",", keyCode: 43), client: client))
+        #expect(client.insertedText == "你好,")
+        #expect(controller.handle(makeKeyEvent(char: ".", keyCode: 47, modifiers: [.control]), client: client))
+        #expect(!settings.isEnglishPunctuationEnabled)
+        #expect(controller.handle(makeKeyEvent(char: ".", keyCode: 47), client: client))
+        #expect(client.insertedText == "你好,。")
+        #expect(controller.inputText("!", client: client))
+        #expect(client.insertedText == "你好,。！")
+    }
+
+    @Test @MainActor
+    func asciiPunctuationCoversBothInputPathsAndMicrosoftSemicolon() {
+        let settings = AetherSettings.shared
+        let previous = settings.isEnglishPunctuationEnabled
+        let scheme = settings.pinyinScheme
+        defer { settings.isEnglishPunctuationEnabled = previous; settings.pinyinScheme = scheme }
+        settings.isEnglishPunctuationEnabled = true
+        settings.pinyinScheme = .microsoft
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        #expect(controller.inputText("p;", client: client))
+        #expect(client.markedText == "p;")
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "平")
+        #expect(controller.inputText(",.!?:;[]{}\"\"", client: client))
+        #expect(client.insertedText == "平,.!?:;[]{}\"\"")
+        #expect(controller.handle(makeKeyEvent(char: "/", keyCode: 44), client: client))
+        #expect(client.insertedText.hasSuffix("/"))
+        for modifiers: NSEvent.ModifierFlags in [[.control, .shift], [.control, .option], [.command]] {
+            #expect(!controller.handle(makeKeyEvent(char: ".", keyCode: 47, modifiers: modifiers), client: client))
+            #expect(settings.isEnglishPunctuationEnabled)
+        }
+    }
+
     @Test @MainActor
     func editsMiddleAndPreservesCandidates() {
         let client = MockTextInputClient()

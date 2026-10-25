@@ -37,6 +37,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private var shiftPressTime: TimeInterval = 0
     private var shiftSoleModifier: Bool = false
     private var lastCommittedChar: Character? = nil
+    private var compositionContext = ""
+    private var committedContext = ""
+    private var committedContextEnd: Int?
     private var lastCompositionCaretRect: NSRect?
     
     // MARK: - IMK Lifecycle
@@ -57,6 +60,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     public override func deactivateServer(_ sender: Any!) {
+        committedContext = ""
+        committedContextEnd = nil
         if !buffer.isEmpty {
             resetComposition(client: sender)
         }
@@ -75,7 +80,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let settings = AetherSettings.shared
         
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.3") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.4") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -118,6 +123,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         punctItem.state = settings.isSmartPunctuationEnabled ? .on : .off
         menu.addItem(punctItem)
         
+        let englishPunctItem = NSMenuItem(title: "中文使用英文标点", action: #selector(menuToggleEnglishPunctuation), keyEquivalent: ".")
+        englishPunctItem.keyEquivalentModifierMask = [.control]
+        englishPunctItem.target = self
+        englishPunctItem.state = settings.isEnglishPunctuationEnabled ? .on : .off
+        menu.addItem(englishPunctItem)
+
         let fuzzyItem = NSMenuItem(title: "模糊音智能纠错", action: #selector(menuToggleFuzzy), keyEquivalent: "")
         fuzzyItem.target = self
         fuzzyItem.state = settings.isFuzzyPinyinEnabled ? .on : .off
@@ -172,6 +183,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         AetherSettings.shared.isSmartPunctuationEnabled.toggle()
     }
 
+    @objc private func menuToggleEnglishPunctuation() {
+        AetherSettings.shared.isEnglishPunctuationEnabled.toggle()
+    }
+
     @objc private func menuToggleFuzzy() {
         AetherSettings.shared.isFuzzyPinyinEnabled.toggle()
     }
@@ -219,6 +234,14 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             case 51: manageSelectedCandidate(.forget, client: sender); return true
             default: break
             }
+        }
+
+        // Consume only Ctrl + period before generic shortcut pass-through. Do not
+        // commit raw pinyin, move its caret, or rebuild the candidate panel.
+        if event.keyCode == 47,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.control] {
+            if !event.isARepeat { AetherSettings.shared.isEnglishPunctuationEnabled.toggle() }
+            return true
         }
 
         // Pass through Command / Control keyboard shortcuts instantly
@@ -360,10 +383,11 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             
             // Check Smart Punctuation in Chinese mode
             if inputMode == .chinese,
-               AetherSettings.shared.isSmartPunctuationEnabled,
                let firstChar = characters.first,
                SmartPunctuation.shared.isPunctuation(firstChar) {
-                let converted = SmartPunctuation.shared.convert(char: firstChar, precedingChar: lastCommittedChar)
+                let converted = AetherSettings.shared.usesChinesePunctuation
+                    ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: lastCommittedChar)
+                    : String(firstChar)
                 commitDirect(text: converted, client: sender)
                 return true
             }
@@ -416,7 +440,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             // Punctuation typed during composition: commit candidate first, then punctuation
             if SmartPunctuation.shared.isPunctuation(firstChar) {
                 commitCurrentSelection(client: sender)
-                let converted = AetherSettings.shared.isSmartPunctuationEnabled
+                let converted = AetherSettings.shared.usesChinesePunctuation
                     ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: lastCommittedChar)
                     : String(firstChar)
                 commitDirect(text: converted, client: sender)
@@ -454,8 +478,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         updateCandidates(client: sender)
                         handled = true
                     }
-                } else if inputMode == .chinese && AetherSettings.shared.isSmartPunctuationEnabled && SmartPunctuation.shared.isPunctuation(char) {
-                    let converted = SmartPunctuation.shared.convert(char: char, precedingChar: lastCommittedChar)
+                } else if inputMode == .chinese && SmartPunctuation.shared.isPunctuation(char) {
+                    let converted = AetherSettings.shared.usesChinesePunctuation
+                        ? SmartPunctuation.shared.convert(char: char, precedingChar: lastCommittedChar)
+                        : String(char)
                     commitDirect(text: converted, client: sender)
                     handled = true
                 }
@@ -486,7 +512,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     handled = true
                 } else if SmartPunctuation.shared.isPunctuation(char) {
                     commitCurrentSelection(client: sender)
-                    let converted = AetherSettings.shared.isSmartPunctuationEnabled
+                    let converted = AetherSettings.shared.usesChinesePunctuation
                         ? SmartPunctuation.shared.convert(char: char, precedingChar: lastCommittedChar)
                         : String(char)
                     commitDirect(text: converted, client: sender)
@@ -512,8 +538,24 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private func insertComposition(_ text: String) {
-        if buffer.isEmpty { compositionScheme = AetherSettings.shared.pinyinScheme }
+        if buffer.isEmpty {
+            compositionScheme = AetherSettings.shared.pinyinScheme
+            compositionContext = precedingContext(client: activeClient)
+            committedContext = compositionContext
+        }
         replaceComposition(compositionCursor..<compositionCursor, with: text)
+    }
+
+    private func precedingContext(client: Any?) -> String {
+        guard let textInput = resolveClient(client) as? IMKTextInput else { return "" }
+        let selection = textInput.selectedRange()
+        guard selection.location != NSNotFound, selection.location > 0, selection.length == 0 else { return "" }
+        // Ask for a small UTF-16 window. A host may decline this request.
+        let start = max(0, selection.location - 24)
+        if let text = textInput.attributedSubstring(from: NSRange(location: start, length: selection.location - start))?.string {
+            return PinyinContext.suffix(text)
+        }
+        return committedContextEnd == selection.location ? PinyinContext.suffix(committedContext) : ""
     }
 
     private var acceptsMicrosoftFinal: Bool {
@@ -602,7 +644,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             if inputMode == .vMode {
                 inputMode = .chinese
             }
-            allCandidates = DoublePinyin.query(buffer, scheme: compositionScheme)
+            allCandidates = DoublePinyin.query(buffer, scheme: compositionScheme, precedingText: compositionContext)
         }
         
         currentPage = 1
@@ -699,6 +741,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 : candidate.text
             commitDirect(text: formattedPart, client: targetClient)
             
+            compositionContext = PinyinContext.suffix(compositionContext + candidate.text)
             partialComposedText += candidate.text
             buffer = String(buffer.dropFirst(consumed))
             compositionCursor = buffer.count
@@ -745,6 +788,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
         textInput.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
         lastCommittedChar = text.last
+        committedContext = String((committedContext + text).suffix(24))
+        let selection = textInput.selectedRange()
+        committedContextEnd = selection.location != NSNotFound && selection.location > 0 && selection.length == 0
+            ? selection.location : nil
     }
 
     private func updateClientMarkedText(client: Any?) {
@@ -771,6 +818,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
     private func clearState() {
         lastCompositionCaretRect = nil
+        compositionContext = ""
         buffer = ""
         compositionCursor = 0
         originalFullBuffer = ""
