@@ -1097,3 +1097,101 @@ struct CompositionEditingTests {
         controller.resetComposition(client: client)
     }
 }
+
+extension CompositionEditingTests {
+    @Test @MainActor
+    func doublePinyinLayoutsAndExactOffsets() {
+        #expect(DoublePinyin.reading("nihc", scheme: .flypy) == "ni'hao")
+        #expect(DoublePinyin.reading("nihk", scheme: .microsoft) == "ni'hao")
+        #expect(DoublePinyin.reading("vsgo", scheme: .flypy) == "zhong'guo")
+        #expect(DoublePinyin.reading("vsgo", scheme: .microsoft) == "zhong'guo")
+        #expect(DoublePinyin.reading("jbtm", scheme: .flypy) == "jin'tian")
+        #expect(DoublePinyin.reading("jntm", scheme: .microsoft) == "jin'tian")
+        #expect(DoublePinyin.reading("p;", scheme: .microsoft) == "ping")
+        for (code, reading) in [("aa", "a"), ("ai", "ai"), ("an", "an"), ("ah", "ang"), ("ao", "ao"), ("ee", "e"), ("en", "en"), ("eg", "eng"), ("er", "er"), ("oo", "o"), ("ou", "ou")] {
+            #expect(DoublePinyin.reading(code, scheme: .flypy) == reading)
+        }
+        for (code, reading) in [("oa", "a"), ("ol", "ai"), ("oj", "an"), ("oh", "ang"), ("ok", "ao"), ("oe", "e"), ("of", "en"), ("og", "eng"), ("or", "er"), ("oo", "o"), ("ob", "ou")] {
+            #expect(DoublePinyin.reading(code, scheme: .microsoft) == reading)
+        }
+        #expect(DoublePinyin.reading("ni'hc", scheme: .flypy) == "ni'hao")
+        #expect(DoublePinyin.tokens("ni'hc", scheme: .flypy)?.map(\.rawEnd) == [3, 5])
+        #expect(DoublePinyin.tokens("nb;", scheme: .flypy) == nil)
+        #expect(DoublePinyin.query("vsgo", scheme: .flypy).contains { $0.text == "中国" && $0.consumedInputLength == 4 })
+        let candidates = DoublePinyin.query("jbtmtmqi", scheme: .flypy)
+        #expect(candidates.contains { $0.text == "今天" && $0.consumedInputLength == 4 })
+        #expect(DoublePinyin.query("ni", scheme: .full).first?.text == PinyinEngine.shared.query(rawInput: "ni").first?.text)
+    }
+
+    @Test @MainActor
+    func doublePinyinSyllableCoverageAndSharedPreferences() {
+        for scheme in [PinyinScheme.flypy, .microsoft] {
+            for syllable in PinyinLexicon.syllablesChars.keys.sorted() {
+                for code in DoublePinyin.codes(for: syllable, scheme: scheme) {
+                    let readings = DoublePinyin.tokens(code, scheme: scheme)?.first?.readings ?? []
+                    #expect(readings.contains(syllable), "\(scheme): \(syllable) -> \(code) -> \(readings)")
+                }
+            }
+        }
+        let reading = "nihao"; let word = "双拼偏好验证词"
+        UserLexicon.shared.addCustomPhrase(pinyin: reading, phrase: word)
+        defer { UserLexicon.shared.removeCustomPhrase(pinyin: reading, phrase: word) }
+        UserLexicon.shared.setPinned(word, for: reading, pinned: true)
+        #expect(DoublePinyin.query("nihc", scheme: .flypy).first?.text == word)
+        #expect(DoublePinyin.query("nihk", scheme: .microsoft).first?.text == word)
+        UserLexicon.shared.forget(word, for: reading)
+        #expect(!DoublePinyin.query("nihc", scheme: .flypy).contains { $0.text == word })
+        #expect(!DoublePinyin.query("nihk", scheme: .microsoft).contains { $0.text == word })
+    }
+
+    @Test @MainActor
+    func doublePinyinControllerCommitEditAndCalculator() {
+        let settings = AetherSettings.shared
+        let original = settings.pinyinScheme
+        defer { settings.pinyinScheme = original }
+        for scheme in [PinyinScheme.flypy, .microsoft] {
+            settings.pinyinScheme = scheme
+            let client = MockTextInputClient()
+            let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+            _ = controller.inputText(scheme == .flypy ? "nihc" : "nihk", client: client)
+            #expect(client.markedText == (scheme == .flypy ? "nihc" : "nihk"))
+            _ = controller.handle(makeKeyEvent(char: "", keyCode: 123, modifiers: [.option]), client: client)
+            #expect(client.markedSelection.location == 2)
+            _ = controller.handle(makeKeyEvent(char: "", keyCode: 117), client: client)
+            _ = controller.inputText("h", client: client)
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText == "你好")
+            _ = controller.inputText("vsgo", client: client)
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText.hasSuffix("中国"))
+            _ = controller.inputText("v1+2", client: client)
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText.hasSuffix("3"))
+        }
+    }
+
+    @Test @MainActor
+    func microsoftSemicolonAndPartialCommit() throws {
+        let settings = AetherSettings.shared; let original = settings.pinyinScheme
+        defer { settings.pinyinScheme = original }
+        settings.pinyinScheme = .microsoft
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.handle(makeKeyEvent(char: "p", keyCode: 35), client: client)
+        _ = controller.handle(makeKeyEvent(char: ";", keyCode: 41), client: client)
+        #expect(client.markedText == "p;")
+        #expect(client.insertedText.isEmpty)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(!client.insertedText.isEmpty)
+        controller.resetComposition(client: client); client.reset()
+        settings.pinyinScheme = .flypy
+        _ = controller.inputText("jbtmtmqi", client: client)
+        let index = try #require(DoublePinyin.query("jbtmtmqi", scheme: .flypy).firstIndex { $0.text == "今天" })
+        #expect(index < 7)
+        _ = controller.handle(makeKeyEvent(char: String(index + 1), keyCode: 18), client: client)
+        #expect(client.insertedText == "今天")
+        #expect(client.markedText == "tmqi")
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "今天天气")
+    }
+}

@@ -8,6 +8,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     private let defaults = UserDefaults.standard
     
     private enum Keys {
+        static let pinyinScheme = "aetherkey.settings.pinyinScheme"
         static let panguSpacing = "aetherkey.settings.panguSpacing"
         static let smartPunctuation = "aetherkey.settings.smartPunctuation"
         static let fuzzyPinyin = "aetherkey.settings.fuzzyPinyin"
@@ -16,6 +17,10 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         static let defaultViewMode = "aetherkey.settings.defaultViewMode"
     }
     
+    @Published public var pinyinScheme: PinyinScheme {
+        didSet { defaults.set(pinyinScheme.rawValue, forKey: Keys.pinyinScheme) }
+    }
+
     @Published public var isPanguSpacingEnabled: Bool {
         didSet { defaults.set(isPanguSpacingEnabled, forKey: Keys.panguSpacing) }
     }
@@ -41,6 +46,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     }
     
     private init() {
+        self.pinyinScheme = PinyinScheme(rawValue: defaults.string(forKey: Keys.pinyinScheme) ?? "full") ?? .full
         if defaults.object(forKey: Keys.panguSpacing) == nil {
             defaults.set(true, forKey: Keys.panguSpacing)
         }
@@ -68,6 +74,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     }
     
     public func resetToDefaults() {
+        pinyinScheme = .full
         isPanguSpacingEnabled = true
         isSmartPunctuationEnabled = true
         isFuzzyPinyinEnabled = true

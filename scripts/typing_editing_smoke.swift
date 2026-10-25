@@ -38,7 +38,7 @@ func key(_ code: CGKeyCode, _ flags: CGEventFlags = []) {
     }
     Thread.sleep(forTimeInterval: 0.08)
 }
-let codes: [Character: CGKeyCode] = ["a":0,"b":11,"c":8,"d":2,"e":14,"f":3,"g":5,"h":4,"i":34,"j":38,"k":40,"l":37,"m":46,"n":45,"o":31,"p":35,"q":12,"r":15,"s":1,"t":17,"u":32,"v":9,"w":13,"x":7,"y":16,"z":6,"'":39]
+let codes: [Character: CGKeyCode] = ["a":0,"b":11,"c":8,"d":2,"e":14,"f":3,"g":5,"h":4,"i":34,"j":38,"k":40,"l":37,"m":46,"n":45,"o":31,"p":35,"q":12,"r":15,"s":1,"t":17,"u":32,"v":9,"w":13,"x":7,"y":16,"z":6,"'":39,";":41]
 func type(_ text: String) { for c in text { key(codes[c]!) } }
 switch action {
 case "type": type(args[2])

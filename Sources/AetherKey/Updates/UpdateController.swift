@@ -7,7 +7,7 @@ import Sparkle
 public final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
     public static let shared = UpdateController()
     public static let checkInterval: TimeInterval = 6 * 60 * 60
-    public static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.2" }
+    public static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.3" }
     public enum State { case notChecked, checking, current, available, failed }
     private var controller: SPUStandardUpdaterController?
     private var cancellables = Set<AnyCancellable>()

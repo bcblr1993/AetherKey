@@ -37,6 +37,7 @@
 		8E9A406086127F81882360CA /* InstallationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */; };
 		8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
 		8FDD9F3E09084EB093219384 /* icon.tiff in Resources */ = {isa = PBXBuildFile; fileRef = D1D59ACB8AE9D91D38011085 /* icon.tiff */; };
+		90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */; };
 		92570465FC57861E02858AA7 /* EmojiLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E747FB7796928B423D825813 /* EmojiLexicon.swift */; };
 		9879D393B4773F5BE939F834 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		9F45FCC2759A6CD4C6FC5F19 /* EmojiLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E747FB7796928B423D825813 /* EmojiLexicon.swift */; };
@@ -56,6 +57,7 @@
 		DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		DBD964B6271EA2F930DC360C /* characters-source.json in Resources */ = {isa = PBXBuildFile; fileRef = D531CEAA94BFFFDC9AA58543 /* characters-source.json */; };
 		E01A066695B50E67B7AC4B8F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F7C43BA30D49D429404895E3 /* Sparkle */; };
+		E21C66FBCE7D0ADCC8F26B21 /* DoublePinyin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */; };
 		E260DDD1C2353936CFDC718F /* UserLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823A8B43F6C36DA5B796A196 /* UserLexicon.swift */; };
 		E46F27A4D01802BE9DA11A10 /* PinyinEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F895226685FBA7904EC9634 /* PinyinEngine.swift */; };
 		EB7A9862AE8234452B07398C /* CandidateViewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036B7C18F75F165B3474CC68 /* CandidateViewMode.swift */; };
@@ -95,6 +97,7 @@
 		6F424A70009A4585002394CE /* lexicon.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = lexicon.json; sourceTree = "<group>"; };
 		7090AB8D36306B262A716E2C /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
 		76D9A3A573D9A92F43E30230 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoublePinyin.swift; sourceTree = "<group>"; };
 		7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPunctuation.swift; sourceTree = "<group>"; };
 		823A8B43F6C36DA5B796A196 /* UserLexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserLexicon.swift; sourceTree = "<group>"; };
 		8A3C46116863B069F77044AB /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 			children = (
 				924929FCE36012B9171D38E5 /* CandidateRanking.swift */,
 				382253CA7A194C82F58A9921 /* ContextDetector.swift */,
+				7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */,
 				E747FB7796928B423D825813 /* EmojiLexicon.swift */,
 				A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */,
 				3F895226685FBA7904EC9634 /* PinyinEngine.swift */,
@@ -398,6 +402,7 @@
 				30374388E02CBB37734D5AE1 /* CandidateRanking.swift in Sources */,
 				EB7A9862AE8234452B07398C /* CandidateViewMode.swift in Sources */,
 				1934558C888E84F3337E18AF /* ContextDetector.swift in Sources */,
+				E21C66FBCE7D0ADCC8F26B21 /* DoublePinyin.swift in Sources */,
 				9F45FCC2759A6CD4C6FC5F19 /* EmojiLexicon.swift in Sources */,
 				10D8ABA9CDE28FC66D98346B /* InputController.swift in Sources */,
 				24106657FD9FBF0340966B70 /* InputMode.swift in Sources */,
@@ -426,6 +431,7 @@
 				824F1636426837EEED092F37 /* CandidateRanking.swift in Sources */,
 				C452783A8736462781CE797E /* CandidateViewMode.swift in Sources */,
 				FBCAC0226790DA60C5B6C008 /* ContextDetector.swift in Sources */,
+				90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */,
 				92570465FC57861E02858AA7 /* EmojiLexicon.swift in Sources */,
 				832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */,
 				8E9A406086127F81882360CA /* InstallationManager.swift in Sources */,
@@ -526,7 +532,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026102405;
+				CURRENT_PROJECT_VERSION = 2026102501;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -539,7 +545,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -585,7 +591,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026102405;
+				CURRENT_PROJECT_VERSION = 2026102501;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -604,7 +610,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

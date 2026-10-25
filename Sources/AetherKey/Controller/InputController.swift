@@ -15,6 +15,10 @@ public enum CandidatePanelHolder {
 public final class AetherInputController: IMKInputController, @unchecked Sendable {
     
     // MARK: - State Management
+    private var compositionScheme: PinyinScheme = .full
+    private var isCalculatorComposition: Bool {
+        buffer.hasPrefix("v") && (compositionScheme == .full || buffer.dropFirst().first?.isNumber == true)
+    }
     private var buffer: String = ""
     private var compositionCursor: Int = 0
     private var originalFullBuffer: String = ""
@@ -71,7 +75,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let settings = AetherSettings.shared
         
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.2") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.3") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -90,6 +94,18 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         viewItem.target = self
         menu.addItem(viewItem)
         
+        for scheme in PinyinScheme.allCases {
+            let action: Selector
+            switch scheme {
+            case .full: action = #selector(menuSelectFull)
+            case .flypy: action = #selector(menuSelectFlypy)
+            case .microsoft: action = #selector(menuSelectMicrosoft)
+            }
+            let item = NSMenuItem(title: "拼音方案：\(scheme.title)", action: action, keyEquivalent: "")
+            item.target = self
+            item.state = settings.pinyinScheme == scheme ? .on : .off
+            menu.addItem(item)
+        }
         menu.addItem(NSMenuItem.separator())
         
         let panguItem = NSMenuItem(title: "盘古之白自动空格", action: #selector(menuTogglePangu), keyEquivalent: "")
@@ -122,6 +138,15 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         updateItem.target = self
         menu.addItem(updateItem)
         return menu
+    }
+
+    @objc private func menuSelectFull() { selectScheme(.full) }
+    @objc private func menuSelectFlypy() { selectScheme(.flypy) }
+    @objc private func menuSelectMicrosoft() { selectScheme(.microsoft) }
+
+    private func selectScheme(_ scheme: PinyinScheme) {
+        // Existing marked text keeps its original layout until committed or cancelled.
+        AetherSettings.shared.pinyinScheme = scheme
     }
 
     @objc private func menuCheckForUpdates() {
@@ -278,12 +303,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 return true
                 
             // Page Previous: '-' (without Shift, outside v-mode) or PageUp (116)
-            case 27 where !flags.contains(.shift) && !buffer.hasPrefix("v"), 116:
+            case 27 where !flags.contains(.shift) && !isCalculatorComposition, 116:
                 flipPage(delta: -1, client: sender)
                 return true
                 
             // Page Next: '=' (without Shift, outside v-mode) or PageDown (121)
-            case 24 where !flags.contains(.shift) && !buffer.hasPrefix("v"), 121:
+            case 24 where !flags.contains(.shift) && !isCalculatorComposition, 121:
                 flipPage(delta: 1, client: sender)
                 return true
                 
@@ -355,7 +380,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         // Numeric selection keys 1 - 9
         if let char = characters.first, char.isNumber, let digit = char.wholeNumberValue, digit >= 1 && digit <= 9 {
             // In v-mode, digits are part of the mathematical/RMB expression!
-            if buffer.hasPrefix("v") {
+            if isCalculatorComposition || buffer == "v" {
                 insertComposition(String(char))
                 updateCandidates(client: sender)
                 return true
@@ -370,7 +395,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
         
         // If in v-mode and '0' is typed
-        if buffer.hasPrefix("v"), let char = characters.first, char == "0" {
+        if isCalculatorComposition || buffer == "v", let char = characters.first, char == "0" {
             insertComposition(String(char))
             updateCandidates(client: sender)
             return true
@@ -378,8 +403,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         // Character appending: letters, digits in v-mode, math operators, or apostrophe
         if let firstChar = characters.first {
-            if firstChar.isLetter || firstChar == "'" || (buffer.hasPrefix("v") && "+-*/.()^%".contains(firstChar)) {
-                let toAppend = buffer.hasPrefix("v") ? characters : characters.lowercased()
+            if (firstChar == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || firstChar.isLetter || firstChar == "'" || (isCalculatorComposition && "+-*/.()^%".contains(firstChar)) {
+                let toAppend = isCalculatorComposition ? characters : characters.lowercased()
                 insertComposition(toAppend)
                 if partialComposedText.isEmpty {
                     originalFullBuffer = buffer
@@ -441,7 +466,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 } else if char == "\n" || char == "\r" {
                     commitRaw(client: sender)
                     handled = true
-                } else if buffer.hasPrefix("v") && (char.isNumber || "+-*/.()^%".contains(char)) {
+                } else if (isCalculatorComposition || buffer == "v") && (char.isNumber || "+-*/.()^%".contains(char)) {
                     insertComposition(String(char))
                     updateCandidates(client: sender)
                     handled = true
@@ -452,8 +477,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         commitCandidate(pageCandidates[targetIdx], client: sender)
                         handled = true
                     }
-                } else if lowerChar.isLetter || lowerChar == "'" {
-                    insertComposition(String(buffer.hasPrefix("v") ? char : lowerChar))
+                } else if (char == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || lowerChar.isLetter || lowerChar == "'" {
+                    insertComposition(String(isCalculatorComposition ? char : lowerChar))
                     if partialComposedText.isEmpty {
                         originalFullBuffer = buffer
                     }
@@ -487,16 +512,29 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private func insertComposition(_ text: String) {
+        if buffer.isEmpty { compositionScheme = AetherSettings.shared.pinyinScheme }
         replaceComposition(compositionCursor..<compositionCursor, with: text)
     }
 
+    private var acceptsMicrosoftFinal: Bool {
+        let prefix = String(buffer.prefix(compositionCursor))
+        return (prefix.split(separator: "'", omittingEmptySubsequences: false).last?.count ?? 0) % 2 == 1
+    }
+
+    private var compositionBoundaries: [Int] {
+        if compositionScheme == .full || isCalculatorComposition {
+            return PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
+        }
+        return DoublePinyin.tokens(buffer, scheme: compositionScheme)?.map(\.rawEnd) ?? [buffer.count]
+    }
+
     private func previousSyllableBoundary() -> Int {
-        let boundaries = [0] + PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
+        let boundaries = [0] + compositionBoundaries
         return boundaries.last(where: { $0 < compositionCursor }) ?? 0
     }
 
     private func nextSyllableBoundary() -> Int {
-        PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
+        compositionBoundaries
             .first(where: { $0 > compositionCursor }) ?? buffer.count
     }
 
@@ -505,7 +543,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private func candidateReading(_ candidate: Candidate) -> String {
-        String(buffer.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : buffer.count))
+        candidate.pinyin ?? String(buffer.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : buffer.count))
     }
 
     private func manageSelectedCandidate(_ action: CandidateAction, client: Any?) {
@@ -515,7 +553,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private func manageCandidate(_ candidate: Candidate, action: CandidateAction, client: Any?) {
-        guard !buffer.hasPrefix("v"), !candidate.isEmoji, candidate.comment != "英" else { return }
+        guard !isCalculatorComposition, !candidate.isEmoji, candidate.comment != "英" else { return }
         let reading = candidateReading(candidate)
         switch action {
         case .pin: UserLexicon.shared.setPinned(candidate.text, for: reading, pinned: true)
@@ -554,7 +592,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             return
         }
         
-        if buffer.hasPrefix("v") && buffer.count > 1 {
+        if isCalculatorComposition && buffer.count > 1 {
             inputMode = .vMode
             allCandidates = VModeCalculator.shared.candidates(for: buffer)
             if allCandidates.isEmpty {
@@ -564,7 +602,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             if inputMode == .vMode {
                 inputMode = .chinese
             }
-            allCandidates = PinyinEngine.shared.query(rawInput: buffer)
+            allCandidates = DoublePinyin.query(buffer, scheme: compositionScheme)
         }
         
         currentPage = 1
@@ -648,12 +686,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private func commitCandidate(_ candidate: Candidate, client: Any?) {
         let targetClient = resolveClient(client)
         let consumed = candidate.consumedInputLength
-        let isPartial = (consumed > 0 && consumed < buffer.count && !buffer.hasPrefix("v"))
+        let isPartial = (consumed > 0 && consumed < buffer.count && !isCalculatorComposition)
         
         if isPartial {
             // Partial selection in a multi-syllable input (e.g. picking "今天" from "jintiantianqi"):
             // Accumulate partial composed text and keep remaining pinyin in buffer!
-            let consumedPinyin = String(buffer.prefix(consumed))
+            let consumedPinyin = candidateReading(candidate)
             UserLexicon.shared.recordCommit(pinyin: consumedPinyin, word: candidate.text)
             
             let formattedPart = AetherSettings.shared.isPanguSpacingEnabled
@@ -669,12 +707,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
         
         // Full buffer commit
-        let fullPinyin = buffer
-        if !fullPinyin.hasPrefix("v") && candidate.comment != "英" && !candidate.isEmoji {
+        let fullPinyin = candidateReading(candidate)
+        if !isCalculatorComposition && candidate.comment != "英" && !candidate.isEmoji {
             UserLexicon.shared.recordCommit(pinyin: fullPinyin, word: candidate.text)
             if !partialComposedText.isEmpty && !originalFullBuffer.isEmpty {
                 // Also learn the complete multi-part phrase the user assembled!
-                UserLexicon.shared.recordCommit(pinyin: originalFullBuffer, word: partialComposedText + candidate.text)
+                UserLexicon.shared.recordCommit(pinyin: DoublePinyin.reading(originalFullBuffer, scheme: compositionScheme), word: partialComposedText + candidate.text)
             }
         }
         
@@ -802,7 +840,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         let curCandidates = candidatesForCurrentPage()
         let curBuffer = buffer
-        let curDisplayPinyin = (inputMode == .vMode) ? curBuffer : PinyinEngine.shared.formatSegmentedPinyin(rawInput: curBuffer)
+        let curDisplayPinyin = (inputMode == .vMode) ? curBuffer : (compositionScheme == .full ? PinyinEngine.shared.formatSegmentedPinyin(rawInput: curBuffer) : DoublePinyin.reading(curBuffer, scheme: compositionScheme))
         let curMode = inputMode
         let curViewMode = candidateViewMode
         let curSel = selectedIndexInPage

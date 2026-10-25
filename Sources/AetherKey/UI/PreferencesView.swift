@@ -147,6 +147,16 @@ public struct PreferencesView: View {
     private var generalSettingsCard: some View {
         LiquidGlassContainer(cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("拼音方案").font(.system(size: 13, weight: .semibold))
+                    Picker("拼音方案", selection: $settings.pinyinScheme) {
+                        ForEach(PinyinScheme.allCases) { scheme in Text(scheme.title).tag(scheme) }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(settings.pinyinScheme == .full ? "默认全拼；也可从输入法菜单切换双拼。" : "每个音节两键；支持整句、拼音中间编辑和候选词管理。微软双拼用分号输入 ing；计算器仍可输入 v 加数字。")
+                        .font(.system(size: 11.5)).foregroundStyle(Color.white.opacity(0.5))
+                }
+                Divider()
                 Label("输入与排版", systemImage: "sparkles")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.white)
