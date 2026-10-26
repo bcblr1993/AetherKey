@@ -316,6 +316,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 return true
                 
             // Left Arrow / Right Arrow
+            case 123 where AetherSettings.shared.isFourArrowSelectionEnabled && !flags.contains(.option):
+                moveSelection(delta: -1, client: sender)
+                return true
+            case 124 where AetherSettings.shared.isFourArrowSelectionEnabled && !flags.contains(.option):
+                moveSelection(delta: 1, client: sender)
+                return true
             case 123:
                 compositionCursor = flags.contains(.option) ? previousSyllableBoundary() : max(0, compositionCursor - 1)
                 updateClientMarkedText(client: sender); renderPanel(client: sender)

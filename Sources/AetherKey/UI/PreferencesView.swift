@@ -181,6 +181,12 @@ public struct PreferencesView: View {
                 Divider().background(Color.white.opacity(0.1))
                 
                 settingToggleRow(
+                    title: "四方向键选择候选",
+                    desc: "开启后，← / ↑ 选择上一个，→ / ↓ 选择下一个；Option + ← / → 按音节移动拼音光标，继续编辑。默认关闭。",
+                    isOn: $settings.isFourArrowSelectionEnabled
+                )
+
+                settingToggleRow(
                     title: "盘古之白自动空格 (Pangu Spacing)",
                     desc: "在中文与英文字母、数字交界处自动插入半角空格，保持极客排版美感。",
                     isOn: $settings.isPanguSpacingEnabled
@@ -360,8 +366,8 @@ public struct PreferencesView: View {
                 shortcutRow(key: "回车键 (Return)", desc: "将当前输入的拼音字母原样英文上屏")
                 shortcutRow(key: "数字键 1 - 9 / 鼠标点击", desc: "直接选择当前页对应序号的候选词（支持长句分步选词）")
                 shortcutRow(key: "- / = 或 [ / ] 或 PgUp/PgDn", desc: "候选词上一页 / 下一页翻页")
-                shortcutRow(key: "Tab / 方向键 ↑↓", desc: "在候选词列表中移动高亮焦点")
-                shortcutRow(key: "← / → · Home / End", desc: "移动拼音光标，修改中间字母；Option + ← / → 按音节移动")
+                shortcutRow(key: settings.isFourArrowSelectionEnabled ? "Tab / ↑ ↓ ← →" : "Tab / 方向键 ↑↓", desc: "在候选词列表中移动高亮焦点")
+                shortcutRow(key: settings.isFourArrowSelectionEnabled ? "Option + ← / → · Home / End" : "← / → · Home / End", desc: settings.isFourArrowSelectionEnabled ? "Option + 左右键按音节移动拼音光标；Home / End 到开头或末尾" : "移动拼音光标，修改中间字母；Option + ← / → 按音节移动")
                 shortcutRow(key: "Option + Delete", desc: "删除光标前的一个音节；向前删除键删除光标后的字母")
                 shortcutRow(key: "候选词右键菜单", desc: "置顶、取消置顶或忘记当前拼音下的候选词")
                 shortcutRow(key: "⌃⌥P / ⌃⌥U / ⌃⌥Delete", desc: "置顶 / 取消置顶 / 忘记当前高亮候选词")

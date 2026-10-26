@@ -8,6 +8,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     private let defaults: UserDefaults
     
     private enum Keys {
+        static let fourArrowSelection = "aetherkey.settings.fourArrowSelection"
         static let pinyinScheme = "aetherkey.settings.pinyinScheme"
         static let panguSpacing = "aetherkey.settings.panguSpacing"
         static let englishPunctuation = "aetherkey.settings.englishPunctuation"
@@ -18,6 +19,10 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         static let defaultViewMode = "aetherkey.settings.defaultViewMode"
     }
     
+    @Published public var isFourArrowSelectionEnabled: Bool {
+        didSet { defaults.set(isFourArrowSelectionEnabled, forKey: Keys.fourArrowSelection) }
+    }
+
     @Published public var pinyinScheme: PinyinScheme {
         didSet { defaults.set(pinyinScheme.rawValue, forKey: Keys.pinyinScheme) }
     }
@@ -60,6 +65,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.isFourArrowSelectionEnabled = defaults.bool(forKey: Keys.fourArrowSelection)
         self.isEnglishPunctuationEnabled = defaults.bool(forKey: Keys.englishPunctuation)
         self.pinyinScheme = PinyinScheme(rawValue: defaults.string(forKey: Keys.pinyinScheme) ?? "full") ?? .full
         if defaults.object(forKey: Keys.panguSpacing) == nil {
@@ -89,6 +95,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
     }
     
     public func resetToDefaults() {
+        isFourArrowSelectionEnabled = false
         pinyinScheme = .full
         isPanguSpacingEnabled = true
         isSmartPunctuationEnabled = true

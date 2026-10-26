@@ -1104,6 +1104,50 @@ struct CompositionEditingTests {
     }
 
     @Test @MainActor
+    func fourArrowPreferencePersistsAndResets() throws {
+        let name = "AetherKey.ArrowTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AetherSettings(defaults: defaults)
+        #expect(!settings.isFourArrowSelectionEnabled)
+        settings.isFourArrowSelectionEnabled = true
+        #expect(AetherSettings(defaults: defaults).isFourArrowSelectionEnabled)
+        settings.resetToDefaults()
+        #expect(!AetherSettings(defaults: defaults).isFourArrowSelectionEnabled)
+    }
+
+    @Test @MainActor
+    func fourArrowsSelectWhileOptionRetainsEditing() {
+        let settings = AetherSettings.shared
+        let previous = settings.isFourArrowSelectionEnabled
+        defer { settings.isFourArrowSelectionEnabled = previous }
+        settings.isFourArrowSelectionEnabled = true
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("nihao", client: client)
+        for code: UInt16 in [124, 125, 123, 126] {
+            #expect(controller.handle(makeKeyEvent(char: "", keyCode: code), client: client))
+            #expect(client.markedText == "nihao")
+            #expect(client.markedSelection.location == 5)
+        }
+        #expect(CandidatePanelHolder.shared.state.selectedIndex == 0)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 124), client: client)
+        #expect(CandidatePanelHolder.shared.state.selectedIndex == 1)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123, modifiers: [.option]), client: client)
+        #expect(client.markedSelection.location == 2)
+        _ = controller.inputText("a", client: client)
+        #expect(client.markedText == "niahao")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 51), client: client)
+        #expect(client.markedText == "nihao")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 124, modifiers: [.option]), client: client)
+        #expect(client.markedSelection.location == 5)
+        settings.isFourArrowSelectionEnabled = false
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        #expect(client.markedSelection.location == 4)
+        controller.resetComposition(client: client)
+    }
+
+    @Test @MainActor
     func editsMiddleAndPreservesCandidates() {
         let client = MockTextInputClient()
         let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
