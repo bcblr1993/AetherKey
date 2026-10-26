@@ -16,7 +16,8 @@ public struct UpdateSettingsView: View {
     }
 
     public var body: some View {
-        LiquidGlassContainer(cornerRadius: 16) {
+        VStack(alignment: .leading, spacing: 18) {
+          PreferencesCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 14) {
                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -37,8 +38,13 @@ public struct UpdateSettingsView: View {
                     Text(status).font(.system(size: 13, weight: .medium))
                 }
                 Divider()
-                Toggle("每 6 小时自动检查更新", isOn: $updater.automaticallyChecksForUpdates).toggleStyle(.switch)
-                HStack(alignment: .top) {
+                HStack {
+                    Text("每 6 小时自动检查更新").font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("每 6 小时自动检查更新", isOn: $updater.automaticallyChecksForUpdates)
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                }
+                HStack(alignment: .top, spacing: 18) {
                     timeLabel("最近检查", date: updater.lastCheckedAt, empty: "尚未检查")
                     Spacer()
                     timeLabel("下次计划检查", date: updater.automaticallyChecksForUpdates ? updater.nextCheckAt : nil,
@@ -46,14 +52,24 @@ public struct UpdateSettingsView: View {
                 }
                 Text("发现新版会显示版本号与更新说明，由你确认下载和安装。休眠或退出后，检查时间会顺延。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
-                Divider()
-                Toggle("登录后自动启动", isOn: Binding(get: { login.isEnabled }, set: { login.setEnabled($0) })).toggleStyle(.switch)
+            }.padding(20)
+          }
+          PreferencesCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("登录与启动", systemImage: "power").font(.system(size: 14, weight: .semibold))
+                HStack {
+                    Text("登录后自动启动").font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("登录后自动启动", isOn: Binding(get: { login.isEnabled }, set: { login.setEnabled($0) }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                }
                 HStack {
                     Text(login.message).font(.system(size: 11)).foregroundStyle(.secondary)
                     Spacer()
                     if login.needsApproval { Button("打开系统设置") { login.openSystemSettings() }.controlSize(.small) }
                 }
             }.padding(20)
+          }
         }
         .onAppear { login.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in login.refresh() }

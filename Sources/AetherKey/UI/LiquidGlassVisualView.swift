@@ -72,36 +72,29 @@ public struct LiquidGlassContainer<Content: View>: View {
     }
 }
 
-/// System input-source keycap. The Chinese label remains distinct from Apple's ABC source.
+/// AetherKey brand: a solid rounded keycap with a transparent capital A.
 public enum AetherMenuBarIcon {
     public static func draw(in rect: NSRect, color: NSColor = .black) {
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        let side = min(rect.width, rect.height * 1.25)
-        (AffineTransform(translationByX: rect.midX - side / 2, byY: rect.midY - side / 2) as NSAffineTransform).concat()
-        (AffineTransform(scaleByX: side / 100, byY: side / 100) as NSAffineTransform).concat()
-        let keycap = NSBezierPath(roundedRect: NSRect(x: 3, y: 12, width: 94, height: 76),
-                                 xRadius: 19, yRadius: 19)
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        context.beginTransparencyLayer(auxiliaryInfo: nil)
-        color.setFill()
-        keycap.fill()
-        let baseFont = CTFontCreateWithName("PingFangSC-Medium" as CFString, 54, nil)
-        let font = CTFontCreateForString(baseFont, "中" as CFString, CFRange(location: 0, length: 1))
-        var character: UniChar = 0x4E2D
-        var glyph: CGGlyph = 0
-        if CTFontGetGlyphsForCharacters(font, &character, &glyph, 1),
-           let letter = CTFontCreatePathForGlyph(font, glyph, nil) {
-            let bounds = letter.boundingBoxOfPath
-            var placement = CGAffineTransform(translationX: 50 - bounds.midX, y: 50 - bounds.midY)
-            if let centered = letter.copy(using: &placement) {
-                context.setBlendMode(.destinationOut)
-                context.setFillColor(NSColor.black.cgColor)
-                context.addPath(centered)
-                context.fillPath()
-            }
+    NSGraphicsContext.saveGraphicsState(); defer { NSGraphicsContext.restoreGraphicsState() }
+    let t = NSAffineTransform(); t.translateX(by:rect.minX,yBy:rect.minY); t.scaleX(by:rect.width/24,yBy:rect.height/24); t.concat()
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+    context.beginTransparencyLayer(auxiliaryInfo: nil)
+    color.setFill()
+    NSBezierPath(roundedRect: NSRect(x: 2, y: 2, width: 20, height: 20), xRadius: 5, yRadius: 5).fill()
+    let font = CTFontCreateWithName("HelveticaNeue-Bold" as CFString, 17, nil)
+    var character: UniChar = 65
+    var glyph: CGGlyph = 0
+    if CTFontGetGlyphsForCharacters(font, &character, &glyph, 1),
+       let letter = CTFontCreatePathForGlyph(font, glyph, nil) {
+        let bounds = letter.boundingBoxOfPath
+        var placement = CGAffineTransform(translationX: 12 - bounds.midX, y: 12 - bounds.midY)
+        if let centered = letter.copy(using: &placement) {
+            context.setBlendMode(.destinationOut)
+            context.addPath(centered)
+            context.fillPath()
         }
-        context.endTransparencyLayer()
+    }
+    context.endTransparencyLayer()
     }
 
     public static func image(size: CGFloat = 22) -> NSImage {

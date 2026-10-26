@@ -63,3 +63,5 @@ xcodebuild -project AetherKey.xcodeproj -scheme AetherSetup -configuration Relea
 - 双拼中 `v` 表示 zh；输入 `v` 加数字仍可使用计算器。回车提交原始按键，空格选词。
 
 键位核对参考：[小鹤方案](https://github.com/rime/rime-double-pinyin/blob/master/double_pinyin_flypy.schema.yaml)、[微软方案](https://github.com/rime/rime-double-pinyin/blob/master/double_pinyin_mspy.schema.yaml)。
+
+1.0.6 统一设置页的侧边导航、分组卡片与明暗外观，优化词库和快捷键展示；菜单栏采用圆角实心 A 字牌，保留 AetherKey 品牌名称。

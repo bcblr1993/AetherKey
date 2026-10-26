@@ -25,9 +25,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.5</string>
+    <string>1.0.6</string>
     <key>CFBundleVersion</key>
-    <string>2026102601</string>
+    <string>2026102602</string>
     <key>SUPublicEDKey</key>
     <string>+7eRUcpR39mrlReC1QPjuEEtIXSBq/qWj5hSzVqPJWQ=</string>
     <key>SUFeedURL</key>
@@ -64,7 +64,7 @@
         <string>Hans</string>
     </array>
     <key>tsInputMethodIconFileKey</key>
-    <string>icon.tiff</string>
+    <string>AetherKeyMenu.tiff</string>
     <key>TICapsLockLanguageSwitchCapable</key>
     <true/>
     <key>ComponentInputModeDict</key>
@@ -73,11 +73,6 @@
         <dict>
             <key>com.aethernative.inputmethod.AetherKey.Hans</key>
             <dict>
-                <key>TISIconLabels</key>
-                <dict>
-                    <key>Primary</key>
-                    <string>中</string>
-                </dict>
                 <key>TISInputSourceID</key>
                 <string>com.aethernative.inputmethod.AetherKey.Hans</string>
                 <key>TISIntendedLanguage</key>
@@ -91,9 +86,9 @@
                 <key>tsInputModeDefaultStateKey</key>
                 <true/>
                 <key>tsInputModeMenuIconFileKey</key>
-                <string>icon.tiff</string>
+                <string>AetherKeyMenu.tiff</string>
                 <key>tsInputModePaletteIconFileKey</key>
-                <string>icon.tiff</string>
+                <string>AetherKeyMenu.tiff</string>
                 <key>tsInputMethodCharacterRepertoireKey</key>
                 <array>
                     <string>Hans</string>
