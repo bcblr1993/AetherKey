@@ -17,7 +17,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     // MARK: - State Management
     private var compositionScheme: PinyinScheme = .full
     private var isCalculatorComposition: Bool {
-        buffer.hasPrefix("v") && (compositionScheme == .full || buffer.dropFirst().first?.isNumber == true)
+        compositionScheme != .wubi86 && buffer.hasPrefix("v") && (compositionScheme == .full || buffer.dropFirst().first?.isNumber == true)
     }
     private var buffer: String = ""
     private var compositionCursor: Int = 0
@@ -79,8 +79,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let menu = NSMenu(title: "AetherKey")
         let settings = AetherSettings.shared
         
+        let dictionaryTitle = settings.pinyinScheme == .wubi86
+            ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码" : "53.3万拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.4") · 53.3万词库 (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.4") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -105,8 +107,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             case .full: action = #selector(menuSelectFull)
             case .flypy: action = #selector(menuSelectFlypy)
             case .microsoft: action = #selector(menuSelectMicrosoft)
+            case .wubi86: action = #selector(menuSelectWubi86)
             }
-            let item = NSMenuItem(title: "拼音方案：\(scheme.title)", action: action, keyEquivalent: "")
+            let item = NSMenuItem(title: "输入方案：\(scheme.title)", action: action, keyEquivalent: "")
             item.target = self
             item.state = settings.pinyinScheme == scheme ? .on : .off
             menu.addItem(item)
@@ -131,6 +134,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         let fuzzyItem = NSMenuItem(title: "模糊音智能纠错", action: #selector(menuToggleFuzzy), keyEquivalent: "")
         fuzzyItem.target = self
+        fuzzyItem.isEnabled = settings.pinyinScheme != .wubi86
         fuzzyItem.state = settings.isFuzzyPinyinEnabled ? .on : .off
         menu.addItem(fuzzyItem)
         
@@ -150,6 +154,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         menu.addItem(updateItem)
         return menu
     }
+
+    @objc private func menuSelectWubi86() { selectScheme(.wubi86) }
 
     @objc private func menuSelectFull() { selectScheme(.full) }
     @objc private func menuSelectFlypy() { selectScheme(.flypy) }
@@ -410,7 +416,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         // Numeric selection keys 1 - 9
         if let char = characters.first, char.isNumber, let digit = char.wholeNumberValue, digit >= 1 && digit <= 9 {
             // In v-mode, digits are part of the mathematical/RMB expression!
-            if isCalculatorComposition || buffer == "v" {
+            if isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86) {
                 insertComposition(String(char))
                 updateCandidates(client: sender)
                 return true
@@ -425,7 +431,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
         
         // If in v-mode and '0' is typed
-        if isCalculatorComposition || buffer == "v", let char = characters.first, char == "0" {
+        if isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86), let char = characters.first, char == "0" {
             insertComposition(String(char))
             updateCandidates(client: sender)
             return true
@@ -433,9 +439,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         // Character appending: letters, digits in v-mode, math operators, or apostrophe
         if let firstChar = characters.first {
-            if (firstChar == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || firstChar.isLetter || firstChar == "'" || (isCalculatorComposition && "+-*/.()^%".contains(firstChar)) {
+            if (firstChar == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || firstChar.isLetter || (firstChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z"))) || (isCalculatorComposition && "+-*/.()^%".contains(firstChar)) {
                 let toAppend = isCalculatorComposition ? characters : characters.lowercased()
-                insertComposition(toAppend)
+                appendCode(toAppend, client: sender)
                 if partialComposedText.isEmpty {
                     originalFullBuffer = buffer
                 }
@@ -498,7 +504,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 } else if char == "\n" || char == "\r" {
                     commitRaw(client: sender)
                     handled = true
-                } else if (isCalculatorComposition || buffer == "v") && (char.isNumber || "+-*/.()^%".contains(char)) {
+                } else if (isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86)) && (char.isNumber || "+-*/.()^%".contains(char)) {
                     insertComposition(String(char))
                     updateCandidates(client: sender)
                     handled = true
@@ -509,8 +515,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         commitCandidate(pageCandidates[targetIdx], client: sender)
                         handled = true
                     }
-                } else if (char == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || lowerChar.isLetter || lowerChar == "'" {
-                    insertComposition(String(isCalculatorComposition ? char : lowerChar))
+                } else if (char == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || lowerChar.isLetter || (lowerChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z"))) {
+                    appendCode(String(isCalculatorComposition ? char : lowerChar), client: sender)
                     if partialComposedText.isEmpty {
                         originalFullBuffer = buffer
                     }
@@ -543,6 +549,21 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
     }
 
+    private func appendCode(_ text: String, client: Any?) {
+        if compositionScheme == .wubi86 {
+            guard text.allSatisfy({ ($0 >= "a" && $0 <= "z") || ($0 == "'" && buffer.hasPrefix("z")) }) else { return }
+            if !buffer.hasPrefix("z"), buffer.count == 4 {
+                // Editing a full code is allowed after deleting a letter. At the end,
+                // the fifth root commits the highlighted word and starts a new code.
+                guard compositionCursor == buffer.count,
+                      let selected = candidatesForCurrentPage().dropFirst(selectedIndexInPage).first,
+                      selected.comment != "英" else { return }
+                commitCurrentSelection(client: client)
+            }
+        }
+        insertComposition(text)
+    }
+
     private func insertComposition(_ text: String) {
         if buffer.isEmpty {
             compositionScheme = AetherSettings.shared.pinyinScheme
@@ -570,6 +591,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private var compositionBoundaries: [Int] {
+        if compositionScheme == .wubi86 { return Array(1...max(1, buffer.count)) }
         if compositionScheme == .full || isCalculatorComposition {
             return PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
         }

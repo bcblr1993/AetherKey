@@ -1406,3 +1406,125 @@ extension CompositionEditingTests {
         #expect(client.insertedText == "今天天气")
     }
 }
+
+extension CompositionEditingTests {
+    @Test @MainActor
+    func wubiTableCoverageAndStableExactOrdering() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: path) }
+        let engine = WubiEngine(userLexicon: UserLexicon(storageURL: path))
+        #expect(engine.entryCount > 130_000)
+        #expect(engine.characterCount > 20_000)
+        for (code, text) in [("g", "一"), ("v", "发"), ("wq", "你"), ("vbg", "好"), ("khlg", "中国"), ("yghg", "证")] {
+            #expect(engine.query(code).first?.text == text)
+        }
+        #expect(engine.code(for: "你好") == "wqvb")
+        #expect(engine.code(for: "中国") == "khlg")
+        #expect(engine.query("znihao").contains { $0.text == "你好" && $0.comment == "wqvb" && $0.consumedInputLength == 6 })
+        #expect(engine.query("z").last?.comment == "英")
+        #expect(engine.query("vvvvv").count == 1)
+        #expect(engine.query("wq").contains { $0.comment?.hasPrefix("wq") == true })
+        // Every exact row, including zero-frequency rare characters, stays reachable.
+        let url = try #require(Bundle.main.url(forResource: "wubi86.dict", withExtension: "yaml", subdirectory: "Wubi86"))
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let table = try #require(source.components(separatedBy: "...\n").last)
+        var expected: [String: Set<String>] = [:]
+        for line in table.split(separator: "\n") where !line.hasPrefix("#") {
+            let fields = line.split(separator: "\t")
+            guard fields.count >= 3, (1...4).contains(fields[1].count), fields[1].allSatisfy({ $0 >= "a" && $0 <= "y" }) else { continue }
+            expected[String(fields[1]), default: []].insert(String(fields[0]))
+        }
+        for (code, words) in expected {
+            #expect(words.isSubset(of: Set(engine.query(code).map(\.text))), "Exact code lost words: \(code)")
+        }
+    }
+
+    @Test @MainActor
+    func wubiPersonalDictionaryDoesNotPollutePinyin() {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let lexicon = UserLexicon(storageURL: path)
+        defer { lexicon.flushPendingWrites(); try? FileManager.default.removeItem(at: path) }
+        let engine = WubiEngine(userLexicon: lexicon)
+        let key = WubiEngine.learningKey("g")
+        lexicon.addCustomPhrase(pinyin: key, phrase: "五笔专用短语")
+        #expect(engine.query("g").first?.text == "五笔专用短语")
+        #expect(!lexicon.preferredWords(for: "g").contains("五笔专用短语"))
+        lexicon.setPinned("一", for: key, pinned: true)
+        #expect(engine.query("g").first?.text == "一")
+        lexicon.forget("一", for: key)
+        #expect(!engine.query("g").contains { $0.text == "一" })
+        #expect(!lexicon.isForgotten("一", for: "g"))
+    }
+
+    @Test @MainActor
+    func wubiControllerFifthCodeAndPunctuation() {
+        let settings = AetherSettings.shared; let original = settings.pinyinScheme
+        defer { settings.pinyinScheme = original }
+        settings.pinyinScheme = .wubi86
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        // Exercise both IMK event entry points. Fifth code must start the next word.
+        for char in "wqiy" { _ = controller.handle(makeKeyEvent(char: String(char), keyCode: 0), client: client) }
+        #expect(client.insertedText.isEmpty && client.markedText == "wqiy")
+        _ = controller.inputText("vb", client: client)
+        #expect(client.insertedText == "你" && client.markedText == "vb")
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "你好")
+        _ = controller.inputText("khlg", client: client)
+        _ = controller.handle(makeKeyEvent(char: ".", keyCode: 47), client: client)
+        #expect(client.insertedText.hasSuffix("中国。"))
+        _ = controller.inputText("v", client: client)
+        _ = controller.handle(makeKeyEvent(char: "1", keyCode: 18), client: client)
+        #expect(client.markedText.isEmpty && client.insertedText.hasSuffix("发"))
+        _ = controller.inputText("znihao", client: client)
+        #expect(client.markedText == "znihao")
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText.hasSuffix("你好"))
+    }
+
+    @Test @MainActor
+    func wubiEditingFrozenSchemeSelectionAndInvalidCodes() {
+        let settings = AetherSettings.shared
+        let oldScheme = settings.pinyinScheme; let oldArrows = settings.isFourArrowSelectionEnabled
+        defer { settings.pinyinScheme = oldScheme; settings.isFourArrowSelectionEnabled = oldArrows }
+        settings.pinyinScheme = .wubi86; settings.isFourArrowSelectionEnabled = true
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
+        _ = controller.inputText("khlg", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123, modifiers: [.option]), client: client)
+        #expect(client.markedSelection.location == 3)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 117), client: client)
+        _ = controller.inputText("g", client: client)
+        #expect(client.markedText == "khlg" && client.insertedText.isEmpty)
+        settings.pinyinScheme = .full
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "中国")
+        _ = controller.inputText("nihao", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText.hasSuffix("你好"))
+        settings.pinyinScheme = .wubi86
+        _ = controller.inputText("yghg", client: client)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 124), client: client)
+        let selected = CandidatePanelHolder.shared.state.selectedIndex
+        #expect(selected == 1)
+        _ = controller.inputText("g", client: client)
+        #expect(client.insertedText.hasSuffix("証") && client.markedText == "g")
+        controller.resetComposition(client: client)
+        _ = controller.inputText("vvvzz", client: client)
+        #expect(client.markedText == "vvvz")
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 53), client: client)
+        #expect(client.markedText.isEmpty)
+    }
+
+    @Test @MainActor
+    func wubiSettingsRoundTripAndDefaultCompatibility() {
+        let name = "AetherKey.WubiTest." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(AetherSettings(defaults: defaults).pinyinScheme == .full)
+        AetherSettings(defaults: defaults).pinyinScheme = .wubi86
+        #expect(AetherSettings(defaults: defaults).pinyinScheme == .wubi86)
+        #expect(DoublePinyin.codes(for: "ni", scheme: .wubi86).isEmpty)
+        #expect(DoublePinyin.tokens("wq", scheme: .wubi86) == nil)
+    }
+}

@@ -95,8 +95,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         titleItem.isEnabled = false
         menu.addItem(titleItem)
         
+        let dictionaryTitle = settings.pinyinScheme == .wubi86
+            ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码" : "内置 53.3 万拼音词库"
         let statsItem = NSMenuItem(
-            title: "内置 53.3 万词库 · 已习得 \(UserLexicon.shared.learnedEntryCount) 词",
+            title: "\(dictionaryTitle) · 已习得 \(UserLexicon.shared.learnedEntryCount) 词",
             action: nil,
             keyEquivalent: ""
         )

@@ -1,10 +1,10 @@
 import Foundation
 
 public enum PinyinScheme: String, CaseIterable, Sendable, Identifiable {
-    case full, flypy, microsoft
+    case full, flypy, microsoft, wubi86
     public var id: String { rawValue }
     public var title: String {
-        switch self { case .full: "全拼"; case .flypy: "小鹤双拼"; case .microsoft: "微软双拼" }
+        switch self { case .full: "全拼"; case .flypy: "小鹤双拼"; case .microsoft: "微软双拼"; case .wubi86: "五笔 86" }
     }
 }
 
@@ -29,6 +29,7 @@ public enum DoublePinyin {
         "ua":"w", "uo":"o", "uai":"y", "ui":"v", "uan":"r", "un":"p", "uang":"d", "ong":"s", "ve":"t", "ue":"t"
     ]
     public static func codes(for syllable: String, scheme: PinyinScheme) -> [String] {
+        guard scheme != .wubi86 else { return [] }
         guard scheme != .full else { return [syllable] }
         let finals = scheme == .flypy ? flypyFinals : microsoftFinals
         let initials = ["zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w"]
@@ -61,6 +62,7 @@ public enum DoublePinyin {
     private static let flypyTable = makeTable(.flypy)
     private static let microsoftTable = makeTable(.microsoft)
     public static func tokens(_ raw: String, scheme: PinyinScheme) -> [Token]? {
+        guard scheme == .flypy || scheme == .microsoft else { return nil }
         let chars = Array(raw.lowercased())
         let table = scheme == .flypy ? flypyTable : microsoftTable
         var result: [Token] = []; var i = 0
@@ -83,10 +85,11 @@ public enum DoublePinyin {
         return result
     }
     public static func reading(_ raw: String, scheme: PinyinScheme) -> String {
-        if scheme == .full { return raw }
+        if scheme == .full || scheme == .wubi86 { return raw }
         return tokens(raw, scheme: scheme)?.map(\.reading).joined(separator: "'") ?? raw
     }
     public static func query(_ raw: String, scheme: PinyinScheme, precedingText: String = "") -> [Candidate] {
+        if scheme == .wubi86 { return WubiEngine.shared.query(raw) }
         guard scheme != .full else { return PinyinEngine.shared.query(rawInput: raw, precedingText: precedingText) }
         guard let tokens = tokens(raw, scheme: scheme), !tokens.isEmpty else {
             return [Candidate(text: raw, comment: "英", consumedInputLength: raw.count)]

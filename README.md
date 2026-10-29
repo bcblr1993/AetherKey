@@ -65,3 +65,16 @@ xcodebuild -project AetherKey.xcodeproj -scheme AetherSetup -configuration Relea
 键位核对参考：[小鹤方案](https://github.com/rime/rime-double-pinyin/blob/master/double_pinyin_flypy.schema.yaml)、[微软方案](https://github.com/rime/rime-double-pinyin/blob/master/double_pinyin_mspy.schema.yaml)。
 
 1.0.6 统一设置页的侧边导航、分组卡片与明暗外观，优化词库和快捷键展示；菜单栏采用圆角实心 A 字牌，保留 AetherKey 品牌名称。
+
+### 五笔 86（1.0.7）
+
+在「设置 → 通用设置 → 输入方案」选择「五笔 86」，也可从输入法菜单切换。默认仍为全拼，现有输入源名称保持不变；切换方案不改变正在编辑的编码。
+
+- 支持一级、二级和三级简码、四码单字与词组。例如 `g` → 一、`wq` → 你、`vbg` → 好、`khlg` → 中国。
+- 四码后空格选词；继续输入第五码时，确认当前高亮候选并开始下一字词。无码或正在中间编辑时不触发顶字，避免错误上屏。
+- `z` 加拼音可反查汉字或词组及其五笔编码，如 `znihao` → 你好（wqvb）。反查只返回码表可编码的文字，不代表五笔覆盖全部 Unihan 汉字。
+- 选词、翻页、四方向键开关、紧凑候选与光标跟随继续复用现有界面；Option + 左右键逐码编辑，回车提交原始编码，Esc 取消。
+- `v` 是五笔字根，五笔模式不启用 V 模式计算器。切回全拼/双拼后仍可正常使用计算器。
+- 词库中心可保存 1–4 码五笔自定义短语。学习、短语、置顶和忘记使用独立的 `wubi86:` 命名空间，与拼音偏好互不干扰。
+
+码表来源为 [rime/rime-wubi](https://github.com/rime/rime-wubi/tree/152a0d3f3efe40cae216d1e3b338242446848d07)，原始 YAML 未修改，固定校验值、作者名单和 LGPL-3.0/GPL-3.0 许可随 `Resources/Wubi86` 提供；未链接 Rime 引擎。码表可作为独立资源编辑并重新构建。当前先支持 86 版，未包含 98 版和新世纪版。

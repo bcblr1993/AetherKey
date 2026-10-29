@@ -120,18 +120,19 @@ public struct PreferencesView: View {
         }
         .frame(minWidth: 880, minHeight: 640)
         .onAppear { refreshStats() }
+        .onChange(of: settings.pinyinScheme) { refreshStats() }
     }
 
     // MARK: - Tab 0: General & Typography
     private var generalSettingsCard: some View {
         VStack(alignment: .leading, spacing: 18) {
-            settingsGroup("拼音与候选", icon: "character.cursor.ibeam") {
+            settingsGroup("输入方案与候选", icon: "character.cursor.ibeam") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("拼音方案").font(.system(size: 13, weight: .medium))
-                    Picker("拼音方案", selection: $settings.pinyinScheme) {
+                    Text("输入方案").font(.system(size: 13, weight: .medium))
+                    Picker("输入方案", selection: $settings.pinyinScheme) {
                         ForEach(PinyinScheme.allCases) { scheme in Text(scheme.title).tag(scheme) }
                     }.pickerStyle(.segmented).labelsHidden()
-                    Text(settings.pinyinScheme == .full ? "逐字母输入拼音，也支持简拼与整句输入。" : "每个音节两键，保留整句输入和拼音中间编辑。微软双拼使用分号输入 ing。")
+                    Text(settings.pinyinScheme == .wubi86 ? "五笔 86：最多四码，空格选词；满四码后继续输入顶字。z + 拼音反查编码，如 znihao。" : settings.pinyinScheme == .full ? "逐字母输入拼音，也支持简拼与整句输入。" : "每个音节两键，保留整句输入和拼音中间编辑。微软双拼使用分号输入 ing。")
                         .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Divider()
@@ -146,7 +147,7 @@ public struct PreferencesView: View {
                 Text("输入时按 ⌥ Tab，也可随时切换面板布局。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 Divider()
-                settingToggleRow(title: "四方向键选词", desc: "← / ↑ 选上一个，→ / ↓ 选下一个。⌥ ← / → 仍可编辑拼音。", isOn: $settings.isFourArrowSelectionEnabled)
+                settingToggleRow(title: "四方向键选词", desc: "← / ↑ 选上一个，→ / ↓ 选下一个。⌥ ← / → 仍可编辑输入编码。", isOn: $settings.isFourArrowSelectionEnabled)
             }
             settingsGroup("标点与排版", icon: "textformat") {
                 settingToggleRow(title: "中英文之间自动空格", desc: "在中文与英文字母、数字之间留出半角空格。", isOn: $settings.isPanguSpacingEnabled)
@@ -156,7 +157,8 @@ public struct PreferencesView: View {
                 settingToggleRow(title: "中文使用英文标点", desc: "保持中文输入，使用英文标点。按 ⌃ . 随时切换。", isOn: $settings.isEnglishPunctuationEnabled)
             }
             settingsGroup("输入习惯", icon: "wand.and.stars") {
-                settingToggleRow(title: "模糊音纠错", desc: "兼容 z / zh 等平翘舌、an / ang 等前后鼻音。", isOn: $settings.isFuzzyPinyinEnabled)
+                settingToggleRow(title: "模糊音纠错", desc: settings.pinyinScheme == .wubi86 ? "用于拼音方案，五笔编码不启用模糊音纠错。" : "兼容 z / zh 等平翘舌、an / ang 等前后鼻音。", isOn: $settings.isFuzzyPinyinEnabled)
+                    .disabled(settings.pinyinScheme == .wubi86)
                 Divider()
                 settingToggleRow(title: "终端与代码编辑器默认英文", desc: "进入 Terminal、iTerm2、VS Code 等应用时使用英文模式。", isOn: $settings.isAutoEnglishInTerminalEnabled)
             }
@@ -193,8 +195,8 @@ public struct PreferencesView: View {
                         .foregroundStyle(.primary)
                     
                     HStack(spacing: 16) {
-                        statBox(value: "533,828", label: "内置高频词条")
-                        statBox(value: "415", label: "标准普通话音节")
+                        statBox(value: settings.pinyinScheme == .wubi86 ? WubiEngine.shared.entryCount.formatted() : "533,828", label: settings.pinyinScheme == .wubi86 ? "五笔字词编码" : "内置高频词条")
+                        statBox(value: settings.pinyinScheme == .wubi86 ? WubiEngine.shared.characterCount.formatted() : "415", label: settings.pinyinScheme == .wubi86 ? "五笔单字覆盖" : "标准普通话音节")
                         statBox(value: "\(learnedCount)", label: "用户习得词条")
                         statBox(value: "\(totalChars)", label: "累计上屏字数")
                     }
@@ -231,7 +233,7 @@ public struct PreferencesView: View {
                         .foregroundStyle(.primary)
                     
                     HStack(spacing: 10) {
-                        TextField("拼音，如 gongsi", text: $customPinyin)
+                        TextField(settings.pinyinScheme == .wubi86 ? "五笔码，如 wqvb" : "拼音，如 gongsi", text: $customPinyin)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 155)
                         
@@ -240,27 +242,27 @@ public struct PreferencesView: View {
                         
                         Button("添加短语") {
                             guard !customPinyin.isEmpty, !customPhrase.isEmpty else { return }
-                            UserLexicon.shared.addCustomPhrase(pinyin: customPinyin, phrase: customPhrase)
+                            UserLexicon.shared.addCustomPhrase(pinyin: customPhraseKey, phrase: customPhrase)
                             customPinyin = ""
                             customPhrase = ""
                             refreshStats()
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(customPinyin.trimmingCharacters(in: .whitespaces).isEmpty || customPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(!isCustomCodeValid || customPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     
                     if customList.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "text.badge.plus").font(.system(size: 26)).foregroundStyle(.tertiary)
                             Text("把常用的长句，变成几个字母") .font(.system(size: 13, weight: .medium))
-                            Text("例如用 gongsi 输入公司全称；短语仅保存在本机。")
+                            Text(settings.pinyinScheme == .wubi86 ? "使用 1–4 位五笔码保存短语；五笔与拼音短语互不干扰。" : "例如用 gongsi 输入公司全称；短语仅保存在本机。")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.vertical, 24)
                     } else {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(Array(customList.enumerated()), id: \.offset) { _, item in
                                 HStack {
-                                    Text(item.pinyin)
+                                    Text(item.pinyin.replacingOccurrences(of: "wubi86:", with: ""))
                                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                         .foregroundStyle(Color.accentColor)
                                         .frame(width: 120, alignment: .leading)
@@ -310,11 +312,11 @@ public struct PreferencesView: View {
             settingsGroup("切换与输入", icon: "keyboard") {
                 shortcutRow(key: "Shift", desc: "切换中文 / 英文模式")
                 Divider()
-                shortcutRow(key: "⌃ .", desc: "切换中文 / 英文标点，保留正在输入的拼音")
+                shortcutRow(key: "⌃ .", desc: "切换中文 / 英文标点，保留正在编辑的编码")
                 Divider()
                 shortcutRow(key: "Shift + 字母", desc: "中文模式下输入大写英文字母")
                 Divider()
-                shortcutRow(key: "Space / Return", desc: "空格确认候选；回车提交原始拼音")
+                shortcutRow(key: "Space / Return", desc: "空格确认候选；回车提交原始编码")
             }
             settingsGroup("候选与编辑", icon: "text.cursor") {
                 shortcutRow(key: "⌥ Tab", desc: "切换单行 / 双行候选面板")
@@ -325,16 +327,22 @@ public struct PreferencesView: View {
                 Divider()
                 shortcutRow(key: settings.isFourArrowSelectionEnabled ? "Tab · ↑ ↓ ← →" : "Tab · ↑ ↓", desc: "移动候选高亮，空格确认")
                 Divider()
-                shortcutRow(key: settings.isFourArrowSelectionEnabled ? "⌥ ← / →" : "← / →", desc: settings.isFourArrowSelectionEnabled ? "按音节移动拼音光标；Home / End 到首尾" : "编辑拼音中间字母；⌥ ← / → 按音节移动")
+                shortcutRow(key: settings.isFourArrowSelectionEnabled ? "⌥ ← / →" : "← / →", desc: settings.pinyinScheme == .wubi86 ? "逐码编辑五笔；Home / End 到首尾" : settings.isFourArrowSelectionEnabled ? "按音节移动拼音光标；Home / End 到首尾" : "编辑拼音中间字母；⌥ ← / → 按音节移动")
                 Divider()
-                shortcutRow(key: "⌥ Delete", desc: "删除光标前的一个音节")
+                shortcutRow(key: "⌥ Delete", desc: settings.pinyinScheme == .wubi86 ? "删除光标前的一位编码" : "删除光标前的一个音节")
             }
             settingsGroup("词库与工具", icon: "wand.and.stars") {
                 shortcutRow(key: "候选词右键", desc: "置顶、取消置顶或忘记候选词")
                 Divider()
                 shortcutRow(key: "⌃⌥ P / U / Delete", desc: "置顶 / 取消置顶 / 忘记当前高亮候选")
                 Divider()
-                shortcutRow(key: "v + 内容", desc: "算式、金额大写或日期时间，如 v1+2、v128.5、vdate")
+                if settings.pinyinScheme == .wubi86 {
+                    shortcutRow(key: "第 5 码", desc: "满四码后继续输入，确认当前候选并开始下一字词")
+                    Divider()
+                    shortcutRow(key: "z + 拼音", desc: "拼音反查汉字与词组，候选旁显示五笔编码")
+                } else {
+                    shortcutRow(key: "v + 内容", desc: "算式、金额大写或日期时间，如 v1+2、v128.5、vdate")
+                }
             }
             PreferencesCard {
                 HStack(spacing: 12) {
@@ -369,8 +377,23 @@ public struct PreferencesView: View {
         }.padding(.vertical, 2)
     }
     
+    private var customPhraseKey: String {
+        let code = customPinyin.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return settings.pinyinScheme == .wubi86 ? WubiEngine.learningKey(code) : code
+    }
+
+    private var isCustomCodeValid: Bool {
+        let code = customPinyin.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if settings.pinyinScheme == .wubi86 {
+            return (1...4).contains(code.count) && code.allSatisfy { $0 >= "a" && $0 <= "y" }
+        }
+        return !code.isEmpty
+    }
+
     private func refreshStats() {
-        customList = UserLexicon.shared.allCustomPhrases()
+        customList = UserLexicon.shared.allCustomPhrases().filter {
+            $0.pinyin.hasPrefix("wubi86:") == (settings.pinyinScheme == .wubi86)
+        }
         learnedCount = UserLexicon.shared.learnedEntryCount
         totalChars = UserLexicon.shared.totalCommittedCharacters
     }

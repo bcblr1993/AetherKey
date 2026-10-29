@@ -6,8 +6,8 @@ options:
 settings:
   MACOSX_DEPLOYMENT_TARGET: "14.0"
   SWIFT_VERSION: "6.0"
-  MARKETING_VERSION: "1.0.6"
-  CURRENT_PROJECT_VERSION: "2026102602"
+  MARKETING_VERSION: "1.0.7"
+  CURRENT_PROJECT_VERSION: "2026102901"
   ARCHS: "arm64"
 packages:
   Sparkle:
@@ -35,6 +35,8 @@ targets:
       - Resources/Unihan-LICENSE.txt
       - Resources/emoji.json
       - Resources/Unicode-LICENSE.txt
+      - path: Resources/Wubi86
+        type: folder
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.aethernative.inputmethod.AetherKey
       GENERATE_INFOPLIST_FILE: "NO"

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0695E5B0B97D66C5972E3A9E /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F9BDB5CF978091473A17BED /* UpdateSettingsView.swift */; };
+		06B2B28C0BC39EAA4B828770 /* WubiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037FC2051037E7DF944F8B39 /* WubiEngine.swift */; };
 		0997DD7D7742E776BDD6164A /* zh_CN.lproj in Resources */ = {isa = PBXBuildFile; fileRef = 2E30C835495DC7F2F10C05F1 /* zh_CN.lproj */; };
 		0A5B2089BA5F8412C861302D /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
 		0A8A8F0D348B79FF5B5B12D4 /* SetupWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6890B4DCEA40AED6210BB3AA /* SetupWizardView.swift */; };
@@ -36,16 +37,18 @@
 		832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
 		8E9A406086127F81882360CA /* InstallationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */; };
 		8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
-		8FDD9F3E09084EB093219384 /* AetherKeyMenu.tiff in Resources */ = {isa = PBXBuildFile; fileRef = D1D59ACB8AE9D91D38011085 /* AetherKeyMenu.tiff */; };
 		90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */; };
 		92570465FC57861E02858AA7 /* EmojiLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E747FB7796928B423D825813 /* EmojiLexicon.swift */; };
 		9879D393B4773F5BE939F834 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		9F45FCC2759A6CD4C6FC5F19 /* EmojiLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E747FB7796928B423D825813 /* EmojiLexicon.swift */; };
+		A0CEFD77C03FD367328E19C5 /* AetherKeyMenu.tiff in Resources */ = {isa = PBXBuildFile; fileRef = FFA0D75D3A918B922763466F /* AetherKeyMenu.tiff */; };
 		A5582D096C057A53B0E2B89D /* CandidateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1407D83BA495C9E583A2DEAE /* CandidateListView.swift */; };
 		AB41B8FAD556B9C77AEC5CD5 /* lexicon.json in Resources */ = {isa = PBXBuildFile; fileRef = 6F424A70009A4585002394CE /* lexicon.json */; };
 		AC72953F938726D9BD35AF3D /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 8A3C46116863B069F77044AB /* AppIcon.icns */; };
 		AD0B1891F0D59C43C395DCB8 /* en.lproj in Resources */ = {isa = PBXBuildFile; fileRef = FC10F34BDBF51CA3EA087FE3 /* en.lproj */; };
+		AD46053804396CF25A143B0B /* Wubi86 in Resources */ = {isa = PBXBuildFile; fileRef = AC687F87EB00E2163C88650B /* Wubi86 */; };
 		AF6BEC8D2290EADD2043E4E3 /* Unicode-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8FE2DB1FD9C76EAD21E7D4C6 /* Unicode-LICENSE.txt */; };
+		AF7CA72268766AA58A4B5F4C /* WubiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037FC2051037E7DF944F8B39 /* WubiEngine.swift */; };
 		B6AE630DAFA665B63AA83121 /* zh-Hans.lproj in Resources */ = {isa = PBXBuildFile; fileRef = F2EF26465CE46BD201D01E48 /* zh-Hans.lproj */; };
 		B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D9A3A573D9A92F43E30230 /* main.swift */; };
 		C452783A8736462781CE797E /* CandidateViewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036B7C18F75F165B3474CC68 /* CandidateViewMode.swift */; };
@@ -79,6 +82,7 @@
 /* Begin PBXFileReference section */
 		0270A81FA511D79F5E3B244F /* CandidatePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidatePanel.swift; sourceTree = "<group>"; };
 		036B7C18F75F165B3474CC68 /* CandidateViewMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateViewMode.swift; sourceTree = "<group>"; };
+		037FC2051037E7DF944F8B39 /* WubiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WubiEngine.swift; sourceTree = "<group>"; };
 		0C41E990A6B671CF577E1207 /* AetherKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AetherKeyTests.swift; sourceTree = "<group>"; };
 		1407D83BA495C9E583A2DEAE /* CandidateListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateListView.swift; sourceTree = "<group>"; };
 		1A69BC9E9AD6B96ECEBE00DF /* emoji.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = emoji.json; sourceTree = "<group>"; };
@@ -106,10 +110,10 @@
 		90C69E82FAEAECADC8BF26A9 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		924929FCE36012B9171D38E5 /* CandidateRanking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateRanking.swift; sourceTree = "<group>"; };
 		A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanguSpacing.swift; sourceTree = "<group>"; };
+		AC687F87EB00E2163C88650B /* Wubi86 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Wubi86; path = Resources/Wubi86; sourceTree = SOURCE_ROOT; };
 		B6D7B4E92B2379DFD8029F18 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
 		B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationManager.swift; sourceTree = "<group>"; };
 		CCCB791A7D3B116767260852 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon.png; sourceTree = "<group>"; };
-		D1D59ACB8AE9D91D38011085 /* AetherKeyMenu.tiff */ = {isa = PBXFileReference; lastKnownFileType = image.tiff; path = AetherKeyMenu.tiff; sourceTree = "<group>"; };
 		D3586CE699373825D1868DCB /* InputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputController.swift; sourceTree = "<group>"; };
 		D531CEAA94BFFFDC9AA58543 /* characters-source.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "characters-source.json"; sourceTree = "<group>"; };
 		D5BCDF152B8E6707A67E7AA3 /* Unihan-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Unihan-LICENSE.txt"; sourceTree = "<group>"; };
@@ -120,6 +124,7 @@
 		EC9412423EE20C4365CABC81 /* AetherSetup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AetherSetup.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2EF26465CE46BD201D01E48 /* zh-Hans.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "zh-Hans.lproj"; path = "Resources/zh-Hans.lproj"; sourceTree = SOURCE_ROOT; };
 		FC10F34BDBF51CA3EA087FE3 /* en.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; name = en.lproj; path = Resources/en.lproj; sourceTree = SOURCE_ROOT; };
+		FFA0D75D3A918B922763466F /* AetherKeyMenu.tiff */ = {isa = PBXFileReference; lastKnownFileType = image.tiff; path = AetherKeyMenu.tiff; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -157,6 +162,7 @@
 				7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */,
 				823A8B43F6C36DA5B796A196 /* UserLexicon.swift */,
 				E3F59631917A3377A23C34E8 /* VModeCalculator.swift */,
+				037FC2051037E7DF944F8B39 /* WubiEngine.swift */,
 			);
 			path = Engine;
 			sourceTree = "<group>";
@@ -205,12 +211,12 @@
 		91C51081ABF0053EF3750E4E /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				FFA0D75D3A918B922763466F /* AetherKeyMenu.tiff */,
 				8A3C46116863B069F77044AB /* AppIcon.icns */,
 				D531CEAA94BFFFDC9AA58543 /* characters-source.json */,
 				48015F6F10ABAE156A723DFC /* characters.json */,
 				1A69BC9E9AD6B96ECEBE00DF /* emoji.json */,
 				CCCB791A7D3B116767260852 /* icon.png */,
-				D1D59ACB8AE9D91D38011085 /* AetherKeyMenu.tiff */,
 				6F424A70009A4585002394CE /* lexicon.json */,
 				461856C08FBEE64B1CBB509B /* menubar.pdf */,
 				8FE2DB1FD9C76EAD21E7D4C6 /* Unicode-LICENSE.txt */,
@@ -233,6 +239,7 @@
 			isa = PBXGroup;
 			children = (
 				FC10F34BDBF51CA3EA087FE3 /* en.lproj */,
+				AC687F87EB00E2163C88650B /* Wubi86 */,
 				2E30C835495DC7F2F10C05F1 /* zh_CN.lproj */,
 				F2EF26465CE46BD201D01E48 /* zh-Hans.lproj */,
 				2EC2909AF5A5C2CA8EAC9577 /* AetherKey */,
@@ -363,15 +370,16 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A0CEFD77C03FD367328E19C5 /* AetherKeyMenu.tiff in Resources */,
 				AC72953F938726D9BD35AF3D /* AppIcon.icns in Resources */,
 				AF6BEC8D2290EADD2043E4E3 /* Unicode-LICENSE.txt in Resources */,
 				478D9B94DC2701A0B3C1C9D9 /* Unihan-LICENSE.txt in Resources */,
+				AD46053804396CF25A143B0B /* Wubi86 in Resources */,
 				DBD964B6271EA2F930DC360C /* characters-source.json in Resources */,
 				37EE53DCDFA23B94C9DA22F1 /* characters.json in Resources */,
 				7628BBFABE4CC0EA98730824 /* emoji.json in Resources */,
 				AD0B1891F0D59C43C395DCB8 /* en.lproj in Resources */,
 				63D117ADB4665E538AF196A4 /* icon.png in Resources */,
-				8FDD9F3E09084EB093219384 /* AetherKeyMenu.tiff in Resources */,
 				AB41B8FAD556B9C77AEC5CD5 /* lexicon.json in Resources */,
 				11EECD3245B05C331FFA1D44 /* menubar.pdf in Resources */,
 				B6AE630DAFA665B63AA83121 /* zh-Hans.lproj in Resources */,
@@ -416,6 +424,7 @@
 				0695E5B0B97D66C5972E3A9E /* UpdateSettingsView.swift in Sources */,
 				7CFCC1839B98928CF5864D71 /* UserLexicon.swift in Sources */,
 				8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */,
+				AF7CA72268766AA58A4B5F4C /* WubiEngine.swift in Sources */,
 				B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -442,6 +451,7 @@
 				9879D393B4773F5BE939F834 /* SmartPunctuation.swift in Sources */,
 				E260DDD1C2353936CFDC718F /* UserLexicon.swift in Sources */,
 				C5CA4C69355871AA81C868ED /* VModeCalculator.swift in Sources */,
+				06B2B28C0BC39EAA4B828770 /* WubiEngine.swift in Sources */,
 				6BB2F3222ED1E5BC9244F8C2 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -532,7 +542,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026102602;
+				CURRENT_PROJECT_VERSION = 2026102901;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -545,7 +555,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -591,7 +601,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026102602;
+				CURRENT_PROJECT_VERSION = 2026102901;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -610,7 +620,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
