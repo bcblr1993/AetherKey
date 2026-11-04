@@ -16,6 +16,11 @@ public final class UserLexicon: @unchecked Sendable {
     private let saveQueue = DispatchQueue(label: "com.aethernative.AetherKey.lexicon-save")
     
     private static let defaultStorageURL: URL = {
+        let env = ProcessInfo.processInfo.environment
+        if env["XCTestConfigurationFilePath"] != nil || env["XCTestSessionIdentifier"] != nil || env["XCTestBundlePath"] != nil {
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent("aetherkey-xctest-shared-\(ProcessInfo.processInfo.processIdentifier).json")
+        }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         let dir = appSupport.appendingPathComponent("AetherKey", isDirectory: true)
@@ -31,6 +36,41 @@ public final class UserLexicon: @unchecked Sendable {
         var totalCommittedCharsCount: Int
         var pinnedWords: [String: [String]]?
         var forgottenWords: [String: [String]]?
+    }
+
+    public enum ImportMode: String, CaseIterable, Identifiable, Sendable {
+        case merge
+        case replace
+
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .merge: return "合并导入"
+            case .replace: return "覆盖恢复"
+            }
+        }
+    }
+
+    public struct ImportSummary: Sendable, Equatable {
+        public let mode: ImportMode
+        public let customPhraseCount: Int
+        public let learnedWordCount: Int
+        public let pinnedWordCount: Int
+        public let forgottenWordCount: Int
+    }
+
+    public enum LexiconTransferError: LocalizedError, Sendable, Equatable {
+        case emptyInput
+        case invalidFormat
+
+        public var errorDescription: String? {
+            switch self {
+            case .emptyInput:
+                return "词库文件为空，未发现可导入的词条。"
+            case .invalidFormat:
+                return "无法识别词库文件格式。支持 AetherKey JSON 备份或「编码 词条」文本文件。"
+            }
+        }
     }
     
     init(storageURL: URL? = nil) {
@@ -140,6 +180,18 @@ public final class UserLexicon: @unchecked Sendable {
         defer { lock.unlock() }
         return frequencyTable.values.reduce(0) { $0 + $1.count }
     }
+
+    public var customPhraseCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return customPhrases.values.reduce(0) { $0 + $1.count }
+    }
+
+    public var pinnedEntryCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return pinnedWords.values.reduce(0) { $0 + $1.count }
+    }
     
     public var totalCommittedCharacters: Int {
         lock.lock()
@@ -152,6 +204,317 @@ public final class UserLexicon: @unchecked Sendable {
         frequencyTable.removeAll()
         persistLocked()
         lock.unlock()
+    }
+
+    // MARK: - Lexicon Export & Import
+
+    /// Exports the full user lexicon (frequencies, custom phrases, pinned & forgotten words) as pretty-printed JSON data.
+    public func exportJSONData() throws -> Data {
+        lock.lock()
+        let snapshot = PersistedData(
+            frequencyTable: frequencyTable,
+            customPhrases: customPhrases,
+            totalCommittedCharsCount: totalCommittedCharsCount,
+            pinnedWords: pinnedWords,
+            forgottenWords: forgottenWords
+        )
+        lock.unlock()
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(snapshot)
+    }
+
+    /// Exports custom phrases as human-editable TSV lines (`code<TAB>phrase`).
+    public func exportCustomPhrasesText() -> String {
+        let pairs = allCustomPhrases()
+        var lines = [
+            "# AetherKey 自定义短语词表",
+            "# 格式: 编码<TAB>短语（支持全拼如 gongsi，或五笔如 wubi86:gggg）"
+        ]
+        for (key, phrase) in pairs {
+            lines.append("\(key)\t\(phrase)")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Exports lexicon to the specified file URL. Uses TSV text for `.txt`/`.tsv` extensions and full JSON backup otherwise.
+    public func export(to url: URL) throws {
+        let ext = url.pathExtension.lowercased()
+        if ext == "txt" || ext == "tsv" {
+            let text = exportCustomPhrasesText()
+            try Data(text.utf8).write(to: url, options: .atomic)
+        } else {
+            let data = try exportJSONData()
+            try data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Imports user lexicon data from a file URL (supports full JSON backup, key-to-words JSON, or TSV/TXT/Rime dict lines).
+    @discardableResult
+    public func importFile(from url: URL, mode: ImportMode = .merge) throws -> ImportSummary {
+        let data = try Data(contentsOf: url)
+        return try importData(data, mode: mode)
+    }
+
+    /// Imports user lexicon data from raw `Data` in `.merge` or `.replace` mode.
+    @discardableResult
+    public func importData(_ data: Data, mode: ImportMode = .merge) throws -> ImportSummary {
+        guard !data.isEmpty else { throw LexiconTransferError.emptyInput }
+        let parsed = try parseImportPayload(data)
+        return applyImport(parsed, mode: mode)
+    }
+
+    private func parseImportPayload(_ data: Data) throws -> PersistedData {
+        // 1. Try full PersistedData JSON backup
+        if let full = try? JSONDecoder().decode(PersistedData.self, from: data) {
+            return sanitizeSnapshot(full)
+        }
+
+        // 2. Try simple [String: [String]] JSON dictionary
+        if let dictArray = try? JSONDecoder().decode([String: [String]].self, from: data), !dictArray.isEmpty {
+            return sanitizeSnapshot(PersistedData(
+                frequencyTable: [:],
+                customPhrases: dictArray,
+                totalCommittedCharsCount: 0,
+                pinnedWords: [:],
+                forgottenWords: [:]
+            ))
+        }
+
+        // 3. Try simple [String: String] JSON dictionary
+        if let dictSingle = try? JSONDecoder().decode([String: String].self, from: data), !dictSingle.isEmpty {
+            let mapped = dictSingle.mapValues { [$0] }
+            return sanitizeSnapshot(PersistedData(
+                frequencyTable: [:],
+                customPhrases: mapped,
+                totalCommittedCharsCount: 0,
+                pinnedWords: [:],
+                forgottenWords: [:]
+            ))
+        }
+
+        // 4. Try plain-text / TSV / Rime dict format
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw LexiconTransferError.invalidFormat
+        }
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { throw LexiconTransferError.emptyInput }
+        if trimmedText.first == "{" || trimmedText.first == "[" {
+            throw LexiconTransferError.invalidFormat
+        }
+
+        var custom: [String: [String]] = [:]
+        var frequencies: [String: [String: Int]] = [:]
+        var lines = text.components(separatedBy: .newlines)
+        if let yamlEndIndex = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "..." }) {
+            lines = Array(lines.dropFirst(yamlEndIndex + 1))
+        }
+
+        var parsedCount = 0
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty || line.hasPrefix("#") || line.hasPrefix("//") { continue }
+
+            let tabFields = line.split(separator: "\t", omittingEmptySubsequences: true).map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }
+            let fields: [String]
+            if tabFields.count >= 2 {
+                fields = tabFields
+            } else if line.contains("=") {
+                fields = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: true).map {
+                    $0.trimmingCharacters(in: .whitespaces)
+                }
+            } else {
+                fields = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            }
+            guard fields.count >= 2 else { continue }
+
+            let first = fields[0]
+            let second = fields[1]
+            let codeCandidate: String
+            let phraseCandidate: String
+            if Self.looksLikeCode(first) && !Self.looksLikeCode(second) {
+                codeCandidate = first
+                phraseCandidate = second
+            } else if !Self.looksLikeCode(first) && Self.looksLikeCode(second) {
+                phraseCandidate = first
+                codeCandidate = second
+            } else {
+                codeCandidate = first
+                phraseCandidate = second
+            }
+
+            let key = Self.normalizeImportedKey(codeCandidate)
+            let phrase = phraseCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !phrase.isEmpty else { continue }
+
+            var list = custom[key] ?? []
+            if !list.contains(phrase) {
+                list.append(phrase)
+            }
+            custom[key] = list
+
+            let weight = fields.count >= 3 ? (Int(fields[2]) ?? 100) : 100
+            var freqMap = frequencies[key] ?? [:]
+            freqMap[phrase] = max(freqMap[phrase, default: 0], max(weight, 1))
+            frequencies[key] = freqMap
+            parsedCount += 1
+        }
+
+        guard parsedCount > 0 else { throw LexiconTransferError.invalidFormat }
+        return PersistedData(
+            frequencyTable: frequencies,
+            customPhrases: custom,
+            totalCommittedCharsCount: 0,
+            pinnedWords: [:],
+            forgottenWords: [:]
+        )
+    }
+
+    private static func looksLikeCode(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        let lower = text.lowercased()
+        if lower.hasPrefix("wubi86:") {
+            let rest = lower.dropFirst("wubi86:".count)
+            return !rest.isEmpty && rest.allSatisfy { $0.isASCII && ($0.isLetter || $0.isWhitespace) }
+        }
+        return lower.allSatisfy { $0.isASCII && ($0.isLetter || $0 == "'" || $0 == " ") }
+    }
+
+    private static func normalizeImportedKey(_ raw: String) -> String {
+        let lower = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if lower.hasPrefix("wubi86:") {
+            let code = lower.dropFirst("wubi86:".count)
+                .replacingOccurrences(of: "'", with: "")
+                .replacingOccurrences(of: " ", with: "")
+            return code.isEmpty ? "" : "wubi86:" + code
+        }
+        return lower
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    private func sanitizeSnapshot(_ raw: PersistedData) -> PersistedData {
+        var cleanFreq: [String: [String: Int]] = [:]
+        for (rawKey, wordMap) in raw.frequencyTable {
+            let key = Self.normalizeImportedKey(rawKey)
+            guard !key.isEmpty else { continue }
+            var map = cleanFreq[key] ?? [:]
+            for (rawWord, score) in wordMap {
+                let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !word.isEmpty, score > 0 else { continue }
+                map[word] = max(map[word, default: 0], score)
+            }
+            if !map.isEmpty { cleanFreq[key] = map }
+        }
+
+        func cleanWordListMap(_ source: [String: [String]]?) -> [String: [String]] {
+            guard let source else { return [:] }
+            var result: [String: [String]] = [:]
+            for (rawKey, words) in source {
+                let key = Self.normalizeImportedKey(rawKey)
+                guard !key.isEmpty else { continue }
+                var list = result[key] ?? []
+                for rawWord in words {
+                    let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !word.isEmpty, !list.contains(word) else { continue }
+                    list.append(word)
+                }
+                if !list.isEmpty { result[key] = list }
+            }
+            return result
+        }
+
+        let cleanCustom = cleanWordListMap(raw.customPhrases)
+        let cleanPinned = cleanWordListMap(raw.pinnedWords)
+        let cleanForgotten = cleanWordListMap(raw.forgottenWords)
+
+        return PersistedData(
+            frequencyTable: cleanFreq,
+            customPhrases: cleanCustom,
+            totalCommittedCharsCount: max(0, raw.totalCommittedCharsCount),
+            pinnedWords: cleanPinned,
+            forgottenWords: cleanForgotten
+        )
+    }
+
+    private func applyImport(_ imported: PersistedData, mode: ImportMode) -> ImportSummary {
+        lock.lock()
+        defer { lock.unlock() }
+
+        switch mode {
+        case .replace:
+            frequencyTable = imported.frequencyTable
+            customPhrases = imported.customPhrases
+            totalCommittedCharsCount = imported.totalCommittedCharsCount
+            pinnedWords = imported.pinnedWords ?? [:]
+            forgottenWords = imported.forgottenWords ?? [:]
+            for (key, words) in customPhrases {
+                var map = frequencyTable[key] ?? [:]
+                for word in words {
+                    map[word] = max(map[word, default: 0], 100)
+                    forgottenWords[key]?.removeAll { $0 == word }
+                }
+                frequencyTable[key] = map
+            }
+            for (key, words) in pinnedWords {
+                for word in words {
+                    forgottenWords[key]?.removeAll { $0 == word }
+                }
+            }
+
+        case .merge:
+            totalCommittedCharsCount = max(totalCommittedCharsCount, imported.totalCommittedCharsCount)
+            for (key, words) in imported.forgottenWords ?? [:] {
+                var list = forgottenWords[key] ?? []
+                for word in words where !list.contains(word) {
+                    list.append(word)
+                }
+                if !list.isEmpty { forgottenWords[key] = list }
+            }
+            for (key, words) in imported.customPhrases {
+                var list = customPhrases[key] ?? []
+                var freqMap = frequencyTable[key] ?? [:]
+                for word in words {
+                    if !list.contains(word) {
+                        list.append(word)
+                    }
+                    freqMap[word] = max(freqMap[word, default: 0], 100)
+                    forgottenWords[key]?.removeAll { $0 == word }
+                }
+                if !list.isEmpty { customPhrases[key] = list }
+                if !freqMap.isEmpty { frequencyTable[key] = freqMap }
+            }
+            for (key, words) in imported.pinnedWords ?? [:] {
+                var list = pinnedWords[key] ?? []
+                for word in words {
+                    if !list.contains(word) {
+                        list.append(word)
+                    }
+                    forgottenWords[key]?.removeAll { $0 == word }
+                }
+                if !list.isEmpty { pinnedWords[key] = list }
+            }
+            for (key, wordMap) in imported.frequencyTable {
+                var freqMap = frequencyTable[key] ?? [:]
+                let forgotten = Set(forgottenWords[key] ?? [])
+                for (word, score) in wordMap where score > 0 && !forgotten.contains(word) {
+                    freqMap[word] = max(freqMap[word, default: 0], score)
+                }
+                if !freqMap.isEmpty { frequencyTable[key] = freqMap }
+            }
+        }
+
+        persistLocked()
+        return ImportSummary(
+            mode: mode,
+            customPhraseCount: imported.customPhrases.values.reduce(0) { $0 + $1.count },
+            learnedWordCount: imported.frequencyTable.values.reduce(0) { $0 + $1.count },
+            pinnedWordCount: (imported.pinnedWords ?? [:]).values.reduce(0) { $0 + $1.count },
+            forgottenWordCount: (imported.forgottenWords ?? [:]).values.reduce(0) { $0 + $1.count }
+        )
     }
     
     private func normalized(_ pinyin: String) -> String {

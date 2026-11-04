@@ -54,6 +54,24 @@ public final class WubiEngine: @unchecked Sendable {
                 }
             }
         }
+        // Supplement curated modern place names into in-memory lookup without modifying the upstream YAML table.
+        var addedPlaces = 0
+        for places in PinyinLexicon.builtinPlacePhrases.values {
+            for place in places where place.count >= 2 {
+                guard let wubiCode = code(for: place),
+                      !(exact[wubiCode]?.contains(where: { $0.text == place }) ?? false) else { continue }
+                let entry = Entry(text: place, code: wubiCode, weight: 1)
+                exact[wubiCode, default: []].append(entry)
+                for length in 1..<wubiCode.count {
+                    let prefix = String(wubiCode.prefix(length))
+                    if (completions[prefix]?.count ?? 0) < 128 {
+                        completions[prefix, default: []].append(entry)
+                    }
+                }
+                addedPlaces += 1
+            }
+        }
+        entryCount += addedPlaces
     }
 
     /// Standard 86 phrase encoding: 2+2, 1+1+2, or first three + final character.

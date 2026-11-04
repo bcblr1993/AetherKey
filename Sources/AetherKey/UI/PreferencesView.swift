@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Native Liquid Glass Preferences & User Lexicon Management Window for AetherKey 1.0.
 @MainActor
@@ -41,7 +42,9 @@ public struct PreferencesView: View {
     @State private var customList: [(pinyin: String, phrase: String)] = []
     @State private var learnedCount: Int = 0
     @State private var totalChars: Int = 0
+    @State private var importMode: UserLexicon.ImportMode = .merge
     @State private var statusBanner: String = ""
+    @State private var isStatusError: Bool = false
     
     public init() {}
     
@@ -105,8 +108,9 @@ public struct PreferencesView: View {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 16) {
                         if !statusBanner.isEmpty {
-                            Label(statusBanner, systemImage: "checkmark.circle.fill")
-                                .font(.system(size: 12)).foregroundStyle(.green)
+                            Label(statusBanner, systemImage: isStatusError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(isStatusError ? .red : .green)
                         }
                         if selectedTab == 0 { generalSettingsCard }
                         else if selectedTab == 1 { lexiconSettingsCard }
@@ -195,7 +199,7 @@ public struct PreferencesView: View {
                         .foregroundStyle(.primary)
                     
                     HStack(spacing: 16) {
-                        statBox(value: settings.pinyinScheme == .wubi86 ? WubiEngine.shared.entryCount.formatted() : "533,828", label: settings.pinyinScheme == .wubi86 ? "五笔字词编码" : "内置高频词条")
+                        statBox(value: settings.pinyinScheme == .wubi86 ? WubiEngine.shared.entryCount.formatted() : PinyinLexicon.entryCount.formatted(), label: settings.pinyinScheme == .wubi86 ? "五笔字词编码" : "内置高频词条")
                         statBox(value: settings.pinyinScheme == .wubi86 ? WubiEngine.shared.characterCount.formatted() : "415", label: settings.pinyinScheme == .wubi86 ? "五笔单字覆盖" : "标准普通话音节")
                         statBox(value: "\(learnedCount)", label: "用户习得词条")
                         statBox(value: "\(totalChars)", label: "累计上屏字数")
@@ -206,20 +210,57 @@ public struct PreferencesView: View {
                         desc: "根据你的选词调整排序，让常用词更靠前。",
                         isOn: $settings.isUserLearningEnabled
                     )
-                    
-                    HStack {
-                        Button("清空自学习词频记录") {
-                            UserLexicon.shared.clearLearnedFrequencies()
-                            refreshStats()
-                            statusBanner = "已清空自学习词频"
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Text("词库备份与迁移").font(.system(size: 13, weight: .medium))
+                            Spacer()
+                            Picker("导入方式", selection: $importMode) {
+                                ForEach(UserLexicon.ImportMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 160)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        
-                        if !statusBanner.isEmpty {
-                            Text(statusBanner)
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(Color.green)
+
+                        Text("支持完整 JSON 词库备份（含自学习词频、自定义短语、置顶与忽略记录），也支持导入「编码 词条」纯文本或 Rime 词表。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        HStack(spacing: 10) {
+                            Button("导入词库…") {
+                                importLexiconFromFile()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("导出完整备份 (.json)…") {
+                                exportLexiconFile(asPlainText: false)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            Button("导出短语词表 (.txt)…") {
+                                exportLexiconFile(asPlainText: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            Spacer()
+
+                            Button("清空自学习词频记录") {
+                                UserLexicon.shared.clearLearnedFrequencies()
+                                refreshStats()
+                                isStatusError = false
+                                statusBanner = "已清空自学习词频"
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
                     }
                 }
@@ -396,6 +437,52 @@ public struct PreferencesView: View {
         }
         learnedCount = UserLexicon.shared.learnedEntryCount
         totalChars = UserLexicon.shared.totalCommittedCharacters
+    }
+
+    private func exportLexiconFile(asPlainText: Bool) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        if asPlainText {
+            panel.title = "导出自定义短语词表"
+            panel.nameFieldStringValue = "AetherKey-自定义短语.txt"
+            panel.allowedContentTypes = [.plainText, .tabSeparatedText]
+        } else {
+            panel.title = "导出 AetherKey 词库备份"
+            panel.nameFieldStringValue = "AetherKey-词库备份.json"
+            panel.allowedContentTypes = [.json]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try UserLexicon.shared.export(to: url)
+            isStatusError = false
+            if asPlainText {
+                statusBanner = "已导出短语词表至 \(url.lastPathComponent)"
+            } else {
+                statusBanner = "已导出词库备份至 \(url.lastPathComponent)（\(learnedCount) 条词频，\(UserLexicon.shared.customPhraseCount) 条短语）"
+            }
+        } catch {
+            isStatusError = true
+            statusBanner = "导出失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func importLexiconFromFile() {
+        let panel = NSOpenPanel()
+        panel.title = "导入词库备份或短语词表"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json, .plainText, .tabSeparatedText, .yaml]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let summary = try UserLexicon.shared.importFile(from: url, mode: importMode)
+            refreshStats()
+            isStatusError = false
+            statusBanner = "已\(summary.mode.title)：\(summary.customPhraseCount) 条短语、\(summary.learnedWordCount) 条词频、\(summary.pinnedWordCount) 条置顶"
+        } catch {
+            isStatusError = true
+            statusBanner = "导入失败：\(error.localizedDescription)"
+        }
     }
 }
 

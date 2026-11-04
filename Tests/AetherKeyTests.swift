@@ -1527,4 +1527,125 @@ extension CompositionEditingTests {
         #expect(DoublePinyin.codes(for: "ni", scheme: .wubi86).isEmpty)
         #expect(DoublePinyin.tokens("wq", scheme: .wubi86) == nil)
     }
+
+    @Test
+    func lexiconImportExportFullBackupAndTextFormats() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let sourceURL = dir.appendingPathComponent("source.json")
+        let source = UserLexicon(storageURL: sourceURL)
+        source.recordCommit(pinyin: "hangzhou", word: "杭州")
+        source.recordCommit(pinyin: "hangzhou", word: "杭州")
+        source.addCustomPhrase(pinyin: "gongsi", phrase: "灵键科技有限公司")
+        source.addCustomPhrase(pinyin: "wubi86:gggg", phrase: "五笔短语测试")
+        source.setPinned("杭州", for: "hangzhou", pinned: true)
+        source.forget("航州", for: "hangzhou")
+        source.flushPendingWrites()
+
+        // 1. Full JSON backup export & replace import
+        let backupURL = dir.appendingPathComponent("backup.json")
+        try source.export(to: backupURL)
+
+        let targetURL = dir.appendingPathComponent("target.json")
+        let target = UserLexicon(storageURL: targetURL)
+        target.addCustomPhrase(pinyin: "jiuci", phrase: "将被覆盖的旧词")
+        let replaceSummary = try target.importFile(from: backupURL, mode: .replace)
+        #expect(replaceSummary.mode == .replace)
+        #expect(replaceSummary.customPhraseCount == 2)
+        #expect(replaceSummary.pinnedWordCount == 1)
+        #expect(replaceSummary.forgottenWordCount == 1)
+        #expect(target.preferredWords(for: "gongsi").first == "灵键科技有限公司")
+        #expect(target.preferredWords(for: "wubi86:gggg").first == "五笔短语测试")
+        #expect(!target.preferredWords(for: "jiuci").contains("将被覆盖的旧词"))
+        #expect(target.isPinned("杭州", for: "hangzhou"))
+        #expect(target.isForgotten("航州", for: "hangzhou"))
+        #expect(target.totalCommittedCharacters == 4)
+
+        // 2. Plain text TSV export & merge import (including Rime-style "phrase\tpinyin\tweight" lines)
+        let txtURL = dir.appendingPathComponent("phrases.txt")
+        try source.export(to: txtURL)
+        let rimeStyleText = """
+        # Rime dict header
+        ---
+        name: custom_places
+        ...
+        西湖文化广场\txi hu wen hua guang chang\t200
+        binjiang\t滨江高新
+        wubi86:wqvb\t你好五笔
+        """
+        let rimeURL = dir.appendingPathComponent("rime_custom.txt")
+        try Data(rimeStyleText.utf8).write(to: rimeURL)
+
+        let mergeSummary = try target.importFile(from: rimeURL, mode: .merge)
+        #expect(mergeSummary.mode == .merge)
+        #expect(mergeSummary.customPhraseCount == 3)
+        #expect(target.preferredWords(for: "xihuwenhuaguangchang").first == "西湖文化广场")
+        #expect(target.preferredWords(for: "binjiang").contains("滨江高新"))
+        #expect(target.preferredWords(for: "wubi86:wqvb").first == "你好五笔")
+        // Existing custom phrases remain intact after merge
+        #expect(target.preferredWords(for: "gongsi").first == "灵键科技有限公司")
+
+        // 3. Reject empty and invalid inputs
+        #expect(throws: UserLexicon.LexiconTransferError.emptyInput) {
+            try target.importData(Data(), mode: .merge)
+        }
+        #expect(throws: UserLexicon.LexiconTransferError.invalidFormat) {
+            try target.importData(Data("{invalid-json".utf8), mode: .merge)
+        }
+        target.flushPendingWrites()
+    }
+
+    @Test @MainActor
+    func commonPlaceNamesAcrossFullDoubleJianpinAndWubi() throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: tempURL))
+
+        // 1. Full pinyin top-1 verification for major cities, provinces, districts, tech hubs, and transport hubs
+        let top1Cases: [(String, String)] = [
+            ("beijing", "北京"), ("beijingshi", "北京市"),
+            ("shanghai", "上海"), ("shanghaishi", "上海市"),
+            ("guangzhou", "广州"), ("shenzhen", "深圳"),
+            ("hangzhou", "杭州"), ("hangzhoushi", "杭州市"),
+            ("qingdao", "青岛"), ("qingdaoshi", "青岛市"),
+            ("jinan", "济南"), ("jinanshi", "济南市"),
+            ("changzhou", "常州"), ("changzhoushi", "常州市"),
+            ("taiyuan", "太原"), ("taiyuanshi", "太原市"),
+            ("fuzhou", "福州"), ("xiamen", "厦门"),
+            ("suzhou", "苏州"), ("wuxi", "无锡"), ("ningbo", "宁波"), ("wenzhou", "温州"),
+            ("zhejiangsheng", "浙江省"), ("jiangsusheng", "江苏省"), ("guangdongsheng", "广东省"),
+            ("xinjiangweiwuerzizhiqu", "新疆维吾尔自治区"),
+            ("xihuqu", "西湖区"), ("binjiangqu", "滨江区"), ("yuhangqu", "余杭区"), ("pudongxinqu", "浦东新区"),
+            ("nanshanqu", "南山区"), ("futianqu", "福田区"), ("chaoyangqu", "朝阳区"), ("haidianqu", "海淀区"),
+            ("weilaikejicheng", "未来科技城"), ("zhongguancun", "中关村"), ("lujiazui", "陆家嘴"),
+            ("qianhai", "前海"), ("yuehaijiedao", "粤海街道"), ("shenzhenwan", "深圳湾"), ("huaqiangbei", "华强北"),
+            ("dawanqu", "大湾区"), ("yuegangaodawanqu", "粤港澳大湾区"), ("changsanjiao", "长三角"),
+            ("hangzhoudongzhan", "杭州东站"), ("shanghaihongqiao", "上海虹桥"), ("daxingjichang", "大兴机场"),
+            ("xi'an", "西安"), ("ji'an", "吉安"), ("lu'an", "六安")
+        ]
+        for (input, expected) in top1Cases {
+            let first = engine.query(rawInput: input).first?.text
+            #expect(first == expected, "Expected \(expected) at #1 for \(input), got \(String(describing: first))")
+        }
+
+        // 2. Sentence composition with place names
+        #expect(engine.query(rawInput: "woquqingdao").first?.text == "我去青岛")
+        #expect(engine.query(rawInput: "wozaihangzhoudongzhan").first?.text == "我在杭州东站")
+
+        // 3. Jianpin abbreviations for places
+        for (abbr, place) in [("qd", "青岛"), ("jn", "济南"), ("nb", "宁波"), ("wlkjc", "未来科技城"), ("dwq", "大湾区"), ("hzdz", "杭州东站")] {
+            #expect(engine.query(rawInput: abbr).contains { $0.text == place }, "Missing \(place) for abbreviation \(abbr)")
+        }
+
+        // 4. Double pinyin & Wubi 86 support for modern place names
+        #expect(DoublePinyin.query("qkdc", scheme: .flypy).first?.text == "青岛")
+        #expect(DoublePinyin.query("q;dk", scheme: .microsoft).first?.text == "青岛")
+
+        let wubi = WubiEngine(userLexicon: UserLexicon(storageURL: tempURL))
+        let wlkjcCode = try #require(wubi.code(for: "未来科技城"))
+        #expect(wubi.query(wlkjcCode).contains { $0.text == "未来科技城" })
+        #expect(wubi.query("zweilaikejicheng").contains { $0.text == "未来科技城" && $0.comment == wlkjcCode })
+    }
 }

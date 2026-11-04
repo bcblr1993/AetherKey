@@ -858,6 +858,137 @@ public enum PinyinLexicon {
     ]
 
     public static let commonPhrases: [String: [String]] = PinyinLexicon.loadLexicon()
+    public static let entryCount: Int = PinyinLexicon.commonPhrases.values.reduce(0) { $0 + $1.count }
+
+    /// Curated common place names (provinces, cities, districts, tech hubs, landmarks & transport hubs)
+    public static let builtinPlacePhrases: [String: [String]] = [
+        // Provincial-level divisions
+        "beijing": ["北京"], "beijingshi": ["北京市"],
+        "shanghai": ["上海"], "shanghaishi": ["上海市"],
+        "tianjin": ["天津"], "tianjinshi": ["天津市"],
+        "chongqing": ["重庆"], "chongqingshi": ["重庆市"],
+        "hebei": ["河北"], "hebeisheng": ["河北省"],
+        "shanxi": ["陕西", "山西"], "shanxisheng": ["陕西省", "山西省"],
+        "liaoning": ["辽宁"], "liaoningsheng": ["辽宁省"],
+        "jilin": ["吉林"], "jilinsheng": ["吉林省"], "jilinshi": ["吉林市"],
+        "heilongjiang": ["黑龙江"], "heilongjiangsheng": ["黑龙江省"],
+        "jiangsu": ["江苏"], "jiangsusheng": ["江苏省"],
+        "zhejiang": ["浙江"], "zhejiangsheng": ["浙江省"],
+        "anhui": ["安徽"], "anhuisheng": ["安徽省"],
+        "fujian": ["福建"], "fujiansheng": ["福建省"],
+        "jiangxi": ["江西"], "jiangxisheng": ["江西省"],
+        "shandong": ["山东"], "shandongsheng": ["山东省"],
+        "henan": ["河南"], "henansheng": ["河南省"],
+        "hubei": ["湖北"], "hubeisheng": ["湖北省"],
+        "hunan": ["湖南"], "hunansheng": ["湖南省"],
+        "guangdong": ["广东"], "guangdongsheng": ["广东省"],
+        "hainan": ["海南"], "hainansheng": ["海南省"],
+        "sichuan": ["四川"], "sichuansheng": ["四川省"],
+        "guizhou": ["贵州"], "guizhousheng": ["贵州省"],
+        "yunnan": ["云南"], "yunnansheng": ["云南省"],
+        "gansu": ["甘肃"], "gansusheng": ["甘肃省"],
+        "qinghai": ["青海"], "qinghaisheng": ["青海省"],
+        "taiwan": ["台湾"], "taiwansheng": ["台湾省"],
+        "neimenggu": ["内蒙古"], "neimengguzizhiqu": ["内蒙古自治区"],
+        "guangxi": ["广西"], "guangxizhuangzuzizhiqu": ["广西壮族自治区"],
+        "xizang": ["西藏"], "xizangzizhiqu": ["西藏自治区"],
+        "ningxia": ["宁夏"], "ningxiahuizuzizhiqu": ["宁夏回族自治区"],
+        "xinjiang": ["新疆"], "xinjiangweiwuerzizhiqu": ["新疆维吾尔自治区"],
+        "xianggang": ["香港"], "xianggangtebiexingzhengqu": ["香港特别行政区"],
+        "aomen": ["澳门"], "aomentebiexingzhengqu": ["澳门特别行政区"],
+
+        // Major Cities
+        "guangzhou": ["广州"], "guangzhoushi": ["广州市"],
+        "shenzhen": ["深圳"], "shenzhenshi": ["深圳市"],
+        "hangzhou": ["杭州"], "hangzhoushi": ["杭州市"],
+        "chengdu": ["成都"], "chengdushi": ["成都市"],
+        "wuhan": ["武汉"], "wuhanshi": ["武汉市"],
+        "nanjing": ["南京"], "nanjingshi": ["南京市"],
+        "xi'an": ["西安"], "xianshi": ["西安市"],
+        "suzhou": ["苏州", "宿州"], "suzhoushi": ["苏州市", "宿州市"],
+        "wuxi": ["无锡"], "wuxishi": ["无锡市"],
+        "changzhou": ["常州"], "changzhoushi": ["常州市"],
+        "nantong": ["南通"], "nantongshi": ["南通市"],
+        "xuzhou": ["徐州"], "xuzhoushi": ["徐州市"],
+        "yangzhou": ["扬州"], "yangzhoushi": ["扬州市"],
+        "zhenjiang": ["镇江"], "zhenjiangshi": ["镇江市"],
+        "taizhou": ["台州", "泰州"], "taizhoushi": ["台州市", "泰州市"],
+        "kunshan": ["昆山"], "kunshanshi": ["昆山市"],
+        "ningbo": ["宁波"], "ningboshi": ["宁波市"],
+        "wenzhou": ["温州"], "wenzhoushi": ["温州市"],
+        "jiaxing": ["嘉兴"], "jiaxingshi": ["嘉兴市"],
+        "huzhou": ["湖州"], "huzhoushi": ["湖州市"],
+        "shaoxing": ["绍兴"], "shaoxingshi": ["绍兴市"],
+        "jinhua": ["金华"], "jinhuashi": ["金华市"],
+        "yiwu": ["义乌"], "yiwushi": ["义乌市"],
+        "zhoushan": ["舟山"], "zhoushanshi": ["舟山市"],
+        "quzhou": ["衢州"], "lishui": ["丽水"], "wuzhen": ["乌镇"],
+        "hefei": ["合肥"], "hefeishi": ["合肥市"],
+        "wuhu": ["芜湖"], "bengbu": ["蚌埠"], "huangshan": ["黄山"], "anqing": ["安庆"], "lu'an": ["六安"],
+        "fuzhou": ["福州", "抚州"], "fuzhoushi": ["福州市", "抚州市"],
+        "xiamen": ["厦门"], "xiamenshi": ["厦门市"],
+        "quanzhou": ["泉州"], "quanzhoushi": ["泉州市"],
+        "zhangzhou": ["漳州"], "putian": ["莆田"], "ningde": ["宁德"], "longyan": ["龙岩"],
+        "nanchang": ["南昌"], "nanchangshi": ["南昌市"],
+        "ganzhou": ["赣州"], "jiujiang": ["九江"], "jingdezhen": ["景德镇"], "shangrao": ["上饶"], "ji'an": ["吉安"],
+        "jinan": ["济南"], "jinanshi": ["济南市"],
+        "qingdao": ["青岛"], "qingdaoshi": ["青岛市"],
+        "yantai": ["烟台"], "weifang": ["潍坊"], "weihai": ["威海"], "zibo": ["淄博"], "linyi": ["临沂"], "jining": ["济宁"], "taian": ["泰安"], "rizhao": ["日照"],
+        "zhengzhou": ["郑州"], "zhengzhoushi": ["郑州市"],
+        "luoyang": ["洛阳"], "kaifeng": ["开封"], "nanyang": ["南阳"], "xinxiang": ["新乡"], "xuchang": ["许昌"],
+        "yichang": ["宜昌"], "xiangyang": ["襄阳"], "jingzhou": ["荆州"], "shiyan": ["十堰"],
+        "changsha": ["长沙"], "changshashi": ["长沙市"],
+        "zhuzhou": ["株洲"], "xiangtan": ["湘潭"], "hengyang": ["衡阳"], "yueyang": ["岳阳"], "changde": ["常德"], "zhangjiajie": ["张家界"],
+        "zhuhai": ["珠海"], "zhuhaishi": ["珠海市"],
+        "foshan": ["佛山"], "foshanshi": ["佛山市"],
+        "dongguan": ["东莞"], "dongguanshi": ["东莞市"],
+        "zhongshan": ["中山"], "huizhou": ["惠州"], "jiangmen": ["江门"], "shantou": ["汕头"], "zhanjiang": ["湛江"], "zhaoqing": ["肇庆"], "chaozhou": ["潮州"], "shunde": ["顺德"],
+        "nanning": ["南宁"], "nanningshi": ["南宁市"],
+        "guilin": ["桂林"], "liuzhou": ["柳州"], "beihai": ["北海"],
+        "haikou": ["海口"], "haikoushi": ["海口市"],
+        "sanya": ["三亚"], "sanyashi": ["三亚市"],
+        "mianyang": ["绵阳"], "deyang": ["德阳"], "yibin": ["宜宾"], "luzhou": ["泸州"], "leshan": ["乐山"], "nanchong": ["南充"], "jiuzhaigou": ["九寨沟"], "emeishan": ["峨眉山"], "dujiangyan": ["都江堰"],
+        "guiyang": ["贵阳"], "guiyangshi": ["贵阳市"], "zunyi": ["遵义"],
+        "kunming": ["昆明"], "kunmingshi": ["昆明市"],
+        "dali": ["大理"], "lijiang": ["丽江"], "xishuangbanna": ["西双版纳"], "xianggelila": ["香格里拉"], "qujing": ["曲靖"],
+        "lasa": ["拉萨"], "lasashi": ["拉萨市"], "linzhi": ["林芝"], "rikaze": ["日喀则"],
+        "xianyang": ["咸阳"], "baoji": ["宝鸡"], "yanan": ["延安"], "yan'an": ["延安"], "hanzhong": ["汉中"], "yulin": ["榆林", "玉林"],
+        "lanzhou": ["兰州"], "lanzhoushi": ["兰州市"], "dunhuang": ["敦煌"], "tianshui": ["天水"], "jiuquan": ["酒泉"],
+        "xining": ["西宁"], "xiningshi": ["西宁市"], "qinghaihu": ["青海湖"],
+        "yinchuan": ["银川"], "yinchuanshi": ["银川市"],
+        "wulumuqi": ["乌鲁木齐"], "wulumuqishi": ["乌鲁木齐市"], "kashi": ["喀什"], "yili": ["伊犁"], "tulufan": ["吐鲁番"], "kanasi": ["喀纳斯"],
+        "shijiazhuang": ["石家庄"], "shijiazhuangshi": ["石家庄市"],
+        "tangshan": ["唐山"], "baoding": ["保定"], "handan": ["邯郸"], "qinhuangdao": ["秦皇岛"], "langfang": ["廊坊"], "zhangjiakou": ["张家口"], "chengde": ["承德"], "xionganxinqu": ["雄安新区"],
+        "taiyuan": ["太原"], "taiyuanshi": ["太原市"], "datong": ["大同"], "yuncheng": ["运城"],
+        "huhehaote": ["呼和浩特"], "huhehaoteshi": ["呼和浩特市"], "baotou": ["包头"], "eerduosi": ["鄂尔多斯"], "hulunbeier": ["呼伦贝尔"],
+        "shenyang": ["沈阳"], "shenyangshi": ["沈阳市"],
+        "dalian": ["大连"], "dalianshi": ["大连市"], "anshan": ["鞍山"], "dandong": ["丹东"],
+        "changchun": ["长春"], "changchunshi": ["长春市"], "yanji": ["延吉"],
+        "haerbin": ["哈尔滨"], "haerbinshi": ["哈尔滨市"], "daqing": ["大庆"], "qiqihaer": ["齐齐哈尔"], "mudanjiang": ["牡丹江"],
+        "taibei": ["台北"], "taibeishi": ["台北市"], "xinbei": ["新北"], "taizhong": ["台中"], "tainan": ["台南"], "gaoxiong": ["高雄"], "hualian": ["花莲"],
+
+        // Core Districts, Tech Hubs, Landmarks & Transport Hubs
+        "dongchengqu": ["东城区"], "xichengqu": ["西城区"], "chaoyangqu": ["朝阳区"], "haidianqu": ["海淀区"], "fengtaiqu": ["丰台区"], "tongzhouqu": ["通州区"], "changpingqu": ["昌平区"], "daxingqu": ["大兴区"], "shunyiqu": ["顺义区"],
+        "zhongguancun": ["中关村"], "wangjing": ["望京"], "xierqi": ["西二旗"], "houchangcun": ["后厂村"], "wudaokou": ["五道口"], "sanlitun": ["三里屯"], "guomao": ["国贸"], "wangfujing": ["王府井"],
+        "beijingnanzhan": ["北京南站"], "beijingxizhan": ["北京西站"], "shoudujichang": ["首都机场"], "daxingjichang": ["大兴机场"],
+        "huangpuqu": ["黄浦区", "黄埔区"], "xuhuiqu": ["徐汇区"], "changningqu": ["长宁区"], "jinganqu": ["静安区"], "putuoqu": ["普陀区"], "hongkouqu": ["虹口区"], "yangpuqu": ["杨浦区"], "minhangqu": ["闵行区"], "pudongxinqu": ["浦东新区"], "jiadingqu": ["嘉定区"], "songjiangqu": ["松江区"], "qingpuqu": ["青浦区"],
+        "lujiazui": ["陆家嘴"], "zhangjiang": ["张江"], "waitan": ["外滩"], "xintiandi": ["新天地"], "xujiahui": ["徐家汇"], "jingansi": ["静安寺"], "wujiaochang": ["五角场"], "caohejing": ["漕河泾"],
+        "shanghaihongqiao": ["上海虹桥"], "hongqiaozhan": ["虹桥站"], "hongqiaojichang": ["虹桥机场"], "pudongjichang": ["浦东机场"],
+        "yuexiuqu": ["越秀区"], "haizhuqu": ["海珠区"], "liwanqu": ["荔湾区"], "tianhequ": ["天河区"], "baiyunqu": ["白云区"], "panyuqu": ["番禺区"], "nanshaqu": ["南沙区"],
+        "zhujiangxincheng": ["珠江新城"], "pazhou": ["琶洲"], "guangzhouta": ["广州塔"], "guangzhounanzhan": ["广州南站"], "baiyunjichang": ["白云机场"],
+        "futianqu": ["福田区"], "luohuqu": ["罗湖区"], "nanshanqu": ["南山区"], "baoanqu": ["宝安区"], "longgangqu": ["龙岗区"], "longhuaqu": ["龙华区"], "guangmingqu": ["光明区"], "pingshanqu": ["坪山区"],
+        "qianhai": ["前海"], "yuehaijiedao": ["粤海街道"], "kejiyuan": ["科技园"], "shenzhenwan": ["深圳湾"], "huaqiangbei": ["华强北"], "shenzhenbeizhan": ["深圳北站"], "baoanjichang": ["宝安机场"],
+        "shangchengqu": ["上城区"], "gongshuqu": ["拱墅区"], "xihuqu": ["西湖区"], "binjiangqu": ["滨江区"], "xiaoshanqu": ["萧山区"], "yuhangqu": ["余杭区"], "linpingqu": ["临平区"], "qiantangqu": ["钱塘区"], "fuyangqu": ["富阳区"], "linanqu": ["临安区"],
+        "weilaikejicheng": ["未来科技城"], "qianjiangxincheng": ["钱江新城"], "qianjiangshijicheng": ["钱江世纪城"], "aotizhongxin": ["奥体中心"], "wulinguangchang": ["武林广场"], "xihu": ["西湖"], "xixishidi": ["西溪湿地"], "qiandaohu": ["千岛湖"], "liangzhu": ["良渚"],
+        "hangzhoudongzhan": ["杭州东站"], "hangzhouxizhan": ["杭州西站"], "xiaoshanjichang": ["萧山机场"],
+        "tianfuxinqu": ["天府新区"], "gaoxinqu": ["高新区"], "chunxilu": ["春熙路"], "taiguli": ["太古里"], "chengdudongzhan": ["成都东站"], "tianfujichang": ["天府机场"],
+        "liangjiangxinqu": ["两江新区"], "jiefangbei": ["解放碑"], "hongyadong": ["洪崖洞"], "guanggu": ["光谷"], "huanghelou": ["黄鹤楼"], "xinjiekou": ["新街口"], "fuzimiao": ["夫子庙"], "nanjingnanzhan": ["南京南站"], "dayanta": ["大雁塔"], "datangbuyecheng": ["大唐不夜城"], "xianbeizhan": ["西安北站"], "suzhougongyeyuanqu": ["苏州工业园区"], "binhaixinqu": ["滨海新区"], "songshanhu": ["松山湖"], "hengqin": ["横琴"],
+        "changsanjiao": ["长三角"], "zhusanjiao": ["珠三角"], "jingjinji": ["京津冀"], "dawanqu": ["大湾区"], "yuegangao": ["粤港澳"], "yuegangaodawanqu": ["粤港澳大湾区"], "jiangzhehu": ["江浙沪"], "beishangguang": ["北上广"], "beishangguangshen": ["北上广深"],
+
+        // Major International Countries & Cities
+        "meiguo": ["美国"], "yingguo": ["英国"], "faguo": ["法国"], "deguo": ["德国"], "riben": ["日本"], "hanguo": ["韩国"], "xinjiapo": ["新加坡"], "jianada": ["加拿大"], "aodaliya": ["澳大利亚"], "xinxilan": ["新西兰"], "ruishi": ["瑞士"], "yidali": ["意大利"], "xibanya": ["西班牙"], "eluosi": ["俄罗斯"],
+        "niuyue": ["纽约"], "lundun": ["伦敦"], "bali": ["巴黎"], "bolin": ["柏林"], "dongjing": ["东京"], "daban": ["大阪"], "jingdu": ["京都"], "shouer": ["首尔"], "jiujinshan": ["旧金山"], "guigu": ["硅谷"], "luoshanji": ["洛杉矶"], "xiyatu": ["西雅图"], "wengehua": ["温哥华"], "duolunduo": ["多伦多"], "xini": ["悉尼"], "moerben": ["墨尔本"], "dibai": ["迪拜"], "mangu": ["曼谷"]
+    ]
 
     /// Core built-in fallback phrases ensuring instant availability even before or without external JSON
     public static let builtinCorePhrases: [String: [String]] = [
@@ -989,16 +1120,81 @@ public enum PinyinLexicon {
     public static let commonAbbreviations: [String: [String]] = [
         "nh": ["你好", "您好", "男孩", "女孩"],
         "zg": ["中国", "这个", "足够", "主管"],
-        "bj": ["北京", "比较", "背景", "笔记"],
-        "sh": ["上海", "生活", "时候", "社会", "适合"],
-        "gz": ["广州", "工作", "关注", "工资"],
-        "sz": ["深圳", "甚至", "设置", "数字"],
-        "hz": ["杭州", "合作", "或者", "孩子"],
-        "cd": ["成都", "长度", "菜单"],
-        "wh": ["武汉", "文化", "维护"],
-        "nj": ["南京", "年纪"],
-        "cq": ["重庆", "长期", "出去"],
-        "xa": ["西安", "喜爱"],
+        "bj": ["北京", "比较", "背景", "笔记", "北京市"],
+        "sh": ["上海", "生活", "时候", "社会", "适合", "上海市"],
+        "gz": ["广州", "工作", "关注", "工资", "贵州", "广州市"],
+        "sz": ["深圳", "甚至", "设置", "数字", "苏州", "深圳市", "苏州市"],
+        "hz": ["杭州", "合作", "或者", "孩子", "杭州市", "惠州", "湖州"],
+        "cd": ["成都", "长度", "菜单", "成都市", "承德", "常德"],
+        "wh": ["武汉", "文化", "维护", "武汉市", "威海", "芜湖"],
+        "nj": ["南京", "年纪", "南京市"],
+        "cq": ["重庆", "长期", "出去", "重庆市"],
+        "xa": ["西安", "喜爱", "西安市", "雄安"],
+        "tj": ["天津", "推荐", "提交", "条件", "天津市"],
+        "qd": ["青岛", "确定", "启动", "期待", "青岛市"],
+        "jn": ["济南", "技能", "今年", "济南市"],
+        "zz": ["郑州", "正在", "最终", "郑州市", "株洲", "漳州"],
+        "nb": ["宁波", "内部", "宁波市"],
+        "wz": ["温州", "位置", "文章", "完整", "温州市", "乌镇"],
+        "hf": ["合肥", "回复", "恢复", "合肥市"],
+        "fz": ["福州", "发展", "负责", "复制", "福州市", "抚州"],
+        "xm": ["厦门", "项目", "下面", "厦门市"],
+        "cz": ["常州", "操作", "存在", "常州市", "沧州", "潮州"],
+        "nt": ["南通", "难题", "南通市"],
+        "yz": ["扬州", "验证", "一致", "原则", "扬州市"],
+        "jx": ["嘉兴", "江西", "继续", "进行", "嘉兴市"],
+        "sx": ["绍兴", "陕西", "山西", "实现", "属性", "绍兴市"],
+        "jh": ["金华", "计划", "机会", "结合", "金华市"],
+        "yw": ["义乌", "因为", "业务", "意外", "义乌市"],
+        "fs": ["佛山", "方式", "发送", "佛山市"],
+        "dg": ["东莞", "帝国", "东莞市"],
+        "nc": ["南昌", "内存", "南昌市", "南充"],
+        "gy": ["贵阳", "关于", "工业", "贵阳市", "广元"],
+        "km": ["昆明", "科目", "昆明市"],
+        "nn": ["南宁", "南宁市"],
+        "gl": ["桂林", "管理", "规律", "鼓励", "桂林市"],
+        "hk": ["海口", "很快", "航空", "海口市"],
+        "sy": ["三亚", "沈阳", "使用", "所有", "商业", "三亚市", "沈阳市"],
+        "dl": ["大连", "大理", "登录", "大量", "独立", "大连市"],
+        "cc": ["长春", "存储", "尺寸", "长春市"],
+        "heb": ["哈尔滨", "哈尔滨市"],
+        "sjz": ["石家庄", "石家庄市"],
+        "hhht": ["呼和浩特", "呼和浩特市"],
+        "wlmq": ["乌鲁木齐", "乌鲁木齐市"],
+        "lz": ["兰州", "来自", "例子", "兰州市", "柳州", "林芝"],
+        "yc": ["银川", "宜昌", "因此", "远程", "异常", "盐城", "运城"],
+        "xg": ["香港", "相关", "效果", "修改", "习惯"],
+        "am": ["澳门"],
+        "tb": ["台北", "特别", "同步", "图标"],
+        "zgc": ["中关村"],
+        "ljz": ["陆家嘴"],
+        "wlkjc": ["未来科技城"],
+        "xhq": ["西湖区", "徐汇区"],
+        "bjq": ["滨江区"],
+        "yhq": ["余杭区"],
+        "xsq": ["萧山区"],
+        "pdxq": ["浦东新区"],
+        "nsq": ["南山区", "南沙区"],
+        "ftq": ["福田区", "丰台区"],
+        "cyq": ["朝阳区"],
+        "hdq": ["海淀区", "花都区"],
+        "thq": ["天河区"],
+        "tfxq": ["天府新区"],
+        "xaxq": ["雄安新区"],
+        "dwq": ["大湾区"],
+        "ygadwq": ["粤港澳大湾区"],
+        "csj": ["长三角"],
+        "zsj": ["珠三角"],
+        "jjj": ["京津冀"],
+        "jzh": ["江浙沪"],
+        "bsg": ["北上广"],
+        "bsgs": ["北上广深"],
+        "hzdz": ["杭州东站"],
+        "hzxz": ["杭州西站"],
+        "shhq": ["上海虹桥"],
+        "bjnz": ["北京南站"],
+        "szbz": ["深圳北站"],
+        "gznz": ["广州南站"],
         "srf": ["输入法"],
         "wyy": ["网易云"],
         "kfz": ["开发者"],
@@ -1049,7 +1245,7 @@ public enum PinyinLexicon {
         "sb": ["失败", "设备", "随便", "鼠标", "上班"],
         "fb": ["发布", "方便", "副本"],
         "bb": ["版本", "拜拜", "宝宝", "报表"],
-        "gx": ["更新", "关系", "感谢", "高兴", "共享"],
+        "gx": ["更新", "关系", "感谢", "高兴", "共享", "广西", "高雄"],
         "sj": ["时间", "手机", "设计", "数据", "世界", "睡觉", "升级"],
         "dm": ["代码", "动漫", "店面"],
         "cx": ["程序", "出现", "创新", "查询", "重新"],
@@ -1117,16 +1313,18 @@ public enum PinyinLexicon {
             }
         }
         
-        // Merge builtinCorePhrases so essential daily words are guaranteed to be present at top rank
-        for (key, words) in builtinCorePhrases {
-            if var existing = loaded[key] {
-                for w in words.reversed() {
-                    existing.removeAll(where: { $0 == w })
-                    existing.insert(w, at: 0)
+        // Merge builtinPlacePhrases and builtinCorePhrases so essential daily words and places are guaranteed at top rank
+        for source in [builtinPlacePhrases, builtinCorePhrases] {
+            for (key, words) in source {
+                if var existing = loaded[key] {
+                    for w in words.reversed() {
+                        existing.removeAll(where: { $0 == w })
+                        existing.insert(w, at: 0)
+                    }
+                    loaded[key] = existing
+                } else {
+                    loaded[key] = words
                 }
-                loaded[key] = existing
-            } else {
-                loaded[key] = words
             }
         }
         return loaded
@@ -1429,8 +1627,8 @@ public final class PinyinEngine: Sendable {
                         if let common = PinyinLexicon.sentenceSingleCharMap[key] ?? PinyinLexicon.syllablesChars[key]?.first {
                             words.append(common)
                         }
-                    } else if let core = PinyinLexicon.builtinCorePhrases[key]?.first {
-                        // Curated everyday phrases are stronger priors than dictionary variants.
+                    } else if let core = (PinyinLexicon.builtinCorePhrases[key] ?? PinyinLexicon.builtinPlacePhrases[key])?.first {
+                        // Curated everyday phrases and place names are stronger priors than dictionary variants.
                         // Explicit user choices can still override them and retain alternatives.
                         words.append(core)
                     } else {
@@ -1441,7 +1639,9 @@ public final class PinyinEngine: Sendable {
                         guard !userLexicon.isForgotten(word, for: key) else { continue }
                         let rank = seen.count - 1
                         let cohesion = span > 1 ? Double(span * 100 + (span - 1) * 15) : 10
-                        let core = PinyinLexicon.builtinCorePhrases[key]?.contains(word) == true ? 8.0 : 0
+                        let isCurated = PinyinLexicon.builtinCorePhrases[key]?.contains(word) == true
+                            || PinyinLexicon.builtinPlacePhrases[key]?.contains(word) == true
+                        let core = isCurated ? 8.0 : 0
                         let learned = min(80, log1p(Double(userLexicon.selectionCount(word, for: key))) * 18)
                         let pinned = userLexicon.isPinned(word, for: key) ? 100.0 : 0
                         let score = cohesion + core + learned + pinned - Double(rank * 8 + expansionRank * 4)
