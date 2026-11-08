@@ -87,13 +87,69 @@ public final class UserLexicon: @unchecked Sendable {
         
         lock.lock()
         totalCommittedCharsCount += word.count
-        if AetherSettings.shared.isUserLearningEnabled, !(forgottenWords[key] ?? []).contains(word) {
+        if AetherSettings.shared.isUserLearningEnabled,
+           !(forgottenWords[key] ?? []).contains(word),
+           Self.isValidLearnableEntry(key: key, word: word) {
             var wordMap = frequencyTable[key] ?? [:]
             wordMap[word, default: 0] += 1
             frequencyTable[key] = wordMap
         }
         persistLocked()
         lock.unlock()
+    }
+
+    /// Rolls back a single frequency increment when the user immediately backspaces a mistaken commit.
+    public func rollbackCommit(pinyin: String, word: String) {
+        let key = pinyin.lowercased()
+            .replacingOccurrences(of: "'", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !word.isEmpty else { return }
+
+        lock.lock()
+        totalCommittedCharsCount = max(0, totalCommittedCharsCount - word.count)
+        if var wordMap = frequencyTable[key], let current = wordMap[word] {
+            if current <= 1 {
+                wordMap.removeValue(forKey: word)
+            } else {
+                wordMap[word] = current - 1
+            }
+            if wordMap.isEmpty {
+                frequencyTable.removeValue(forKey: key)
+            } else {
+                frequencyTable[key] = wordMap
+            }
+            persistLocked()
+        }
+        lock.unlock()
+    }
+
+    /// Filters out random consonant mashing and excessively long one-off sentences from polluting frequencyTable.
+    private static func isValidLearnableEntry(key: String, word: String) -> Bool {
+        if key.hasPrefix("wubi86:") {
+            let code = key.dropFirst("wubi86:".count)
+            return (1...4).contains(code.count) && word.count <= 16
+        }
+        guard word.count <= 12, key.count <= 36 else { return false }
+        if word.count >= 2 && (word.contains("哽") || word.contains("鞥")) {
+            return false
+        }
+        let knownGarbagePairs: Set<String> = [
+            "houmina:后米娜", "shijain:时间爱你", "baozhneg:保证呢个",
+            "xinag:西那个", "xinag:西拿过", "shemme:社么么",
+            "xingnegn:新哽鞥", "rangnni:然哽你", "woshnme:我是能么", "gongzuong:工作哽"
+        ]
+        if knownGarbagePairs.contains("\(key):\(word)") {
+            return false
+        }
+        if key.count >= 6 {
+            let vowels: Set<Character> = ["a", "e", "i", "o", "u", "v"]
+            let vowelCount = key.filter { vowels.contains($0) }.count
+            // Reject consonant mashing where vowels are < 20% of a long key
+            if vowelCount * 5 < key.count {
+                return false
+            }
+        }
+        return true
     }
     
     /// Adds a custom user phrase for a specific pinyin code.
@@ -148,7 +204,9 @@ public final class UserLexicon: @unchecked Sendable {
             }
         }
         
-        if AetherSettings.shared.isUserLearningEnabled, let freqMap = frequencyTable[normalized] {
+        if AetherSettings.shared.isUserLearningEnabled,
+           (normalized.count > 1 || normalized.hasPrefix("wubi86:") || ["a", "o", "e"].contains(normalized)),
+           let freqMap = frequencyTable[normalized] {
             let sorted = freqMap.sorted { a, b in
                 if a.value != b.value { return a.value > b.value }
                 return a.key < b.key
@@ -168,6 +226,32 @@ public final class UserLexicon: @unchecked Sendable {
         defer { lock.unlock() }
         var pairs: [(String, String)] = []
         for (k, words) in customPhrases.sorted(by: { $0.key < $1.key }) {
+            for w in words {
+                pairs.append((k, w))
+            }
+        }
+        return pairs
+    }
+
+    /// Returns all pinned words as (pinyin, word) pairs.
+    public func allPinnedWords() -> [(pinyin: String, word: String)] {
+        lock.lock()
+        defer { lock.unlock() }
+        var pairs: [(String, String)] = []
+        for (k, words) in pinnedWords.sorted(by: { $0.key < $1.key }) {
+            for w in words {
+                pairs.append((k, w))
+            }
+        }
+        return pairs
+    }
+
+    /// Returns all forgotten words as (pinyin, word) pairs.
+    public func allForgottenWords() -> [(pinyin: String, word: String)] {
+        lock.lock()
+        defer { lock.unlock() }
+        var pairs: [(String, String)] = []
+        for (k, words) in forgottenWords.sorted(by: { $0.key < $1.key }) {
             for w in words {
                 pairs.append((k, w))
             }
@@ -397,19 +481,6 @@ public final class UserLexicon: @unchecked Sendable {
     }
 
     private func sanitizeSnapshot(_ raw: PersistedData) -> PersistedData {
-        var cleanFreq: [String: [String: Int]] = [:]
-        for (rawKey, wordMap) in raw.frequencyTable {
-            let key = Self.normalizeImportedKey(rawKey)
-            guard !key.isEmpty else { continue }
-            var map = cleanFreq[key] ?? [:]
-            for (rawWord, score) in wordMap {
-                let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !word.isEmpty, score > 0 else { continue }
-                map[word] = max(map[word, default: 0], score)
-            }
-            if !map.isEmpty { cleanFreq[key] = map }
-        }
-
         func cleanWordListMap(_ source: [String: [String]]?) -> [String: [String]] {
             guard let source else { return [:] }
             var result: [String: [String]] = [:]
@@ -430,6 +501,21 @@ public final class UserLexicon: @unchecked Sendable {
         let cleanCustom = cleanWordListMap(raw.customPhrases)
         let cleanPinned = cleanWordListMap(raw.pinnedWords)
         let cleanForgotten = cleanWordListMap(raw.forgottenWords)
+
+        var cleanFreq: [String: [String: Int]] = [:]
+        for (rawKey, wordMap) in raw.frequencyTable {
+            let key = Self.normalizeImportedKey(rawKey)
+            guard !key.isEmpty else { continue }
+            let explicitWords = Set((cleanCustom[key] ?? []) + (cleanPinned[key] ?? []))
+            var map = cleanFreq[key] ?? [:]
+            for (rawWord, score) in wordMap {
+                let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !word.isEmpty, score > 0 else { continue }
+                guard explicitWords.contains(word) || Self.isValidLearnableEntry(key: key, word: word) else { continue }
+                map[word] = max(map[word, default: 0], score)
+            }
+            if !map.isEmpty { cleanFreq[key] = map }
+        }
 
         return PersistedData(
             frequencyTable: cleanFreq,
@@ -547,6 +633,11 @@ public final class UserLexicon: @unchecked Sendable {
         if pinned {
             pinnedWords[key, default: []].insert(word, at: 0)
             forgottenWords[key]?.removeAll { $0 == word }
+            if forgottenWords[key]?.isEmpty == true {
+                forgottenWords.removeValue(forKey: key)
+            }
+        } else if pinnedWords[key]?.isEmpty == true {
+            pinnedWords.removeValue(forKey: key)
         }
         persistLocked()
         lock.unlock()
@@ -558,10 +649,32 @@ public final class UserLexicon: @unchecked Sendable {
         guard !key.isEmpty, !word.isEmpty else { return }
         lock.lock()
         frequencyTable[key]?.removeValue(forKey: word)
+        if frequencyTable[key]?.isEmpty == true {
+            frequencyTable.removeValue(forKey: key)
+        }
         customPhrases[key]?.removeAll { $0 == word }
+        if customPhrases[key]?.isEmpty == true {
+            customPhrases.removeValue(forKey: key)
+        }
         pinnedWords[key]?.removeAll { $0 == word }
+        if pinnedWords[key]?.isEmpty == true {
+            pinnedWords.removeValue(forKey: key)
+        }
         if !(forgottenWords[key] ?? []).contains(word) {
             forgottenWords[key, default: []].append(word)
+        }
+        persistLocked()
+        lock.unlock()
+    }
+
+    /// Restores a previously forgotten candidate for the specified reading.
+    public func unforget(_ word: String, for pinyin: String) {
+        let key = normalized(pinyin)
+        guard !key.isEmpty, !word.isEmpty else { return }
+        lock.lock()
+        forgottenWords[key]?.removeAll { $0 == word }
+        if forgottenWords[key]?.isEmpty == true {
+            forgottenWords.removeValue(forKey: key)
         }
         persistLocked()
         lock.unlock()
@@ -590,12 +703,13 @@ public final class UserLexicon: @unchecked Sendable {
               let decoded = try? JSONDecoder().decode(PersistedData.self, from: data) else {
             return
         }
+        let sanitized = sanitizeSnapshot(decoded)
         lock.lock()
-        self.frequencyTable = decoded.frequencyTable
-        self.customPhrases = decoded.customPhrases
-        self.totalCommittedCharsCount = decoded.totalCommittedCharsCount
-        self.pinnedWords = decoded.pinnedWords ?? [:]
-        self.forgottenWords = decoded.forgottenWords ?? [:]
+        self.frequencyTable = sanitized.frequencyTable
+        self.customPhrases = sanitized.customPhrases
+        self.totalCommittedCharsCount = sanitized.totalCommittedCharsCount
+        self.pinnedWords = sanitized.pinnedWords ?? [:]
+        self.forgottenWords = sanitized.forgottenWords ?? [:]
         lock.unlock()
     }
     

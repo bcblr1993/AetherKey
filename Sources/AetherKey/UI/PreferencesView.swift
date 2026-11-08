@@ -39,7 +39,10 @@ public struct PreferencesView: View {
     @State private var selectedTab: Int = 0
     @State private var customPinyin: String = ""
     @State private var customPhrase: String = ""
+    @State private var phraseSearchText: String = ""
     @State private var customList: [(pinyin: String, phrase: String)] = []
+    @State private var pinnedList: [(pinyin: String, word: String)] = []
+    @State private var forgottenList: [(pinyin: String, word: String)] = []
     @State private var learnedCount: Int = 0
     @State private var totalChars: Int = 0
     @State private var importMode: UserLexicon.ImportMode = .merge
@@ -300,8 +303,12 @@ public struct PreferencesView: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.vertical, 24)
                     } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(customList.enumerated()), id: \.offset) { _, item in
+                        if customList.count > 8 {
+                            TextField("搜索已添加的编码或短语…", text: $phraseSearchText)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(filteredCustomList.enumerated()), id: \.offset) { _, item in
                                 HStack {
                                     Text(item.pinyin.replacingOccurrences(of: "wubi86:", with: ""))
                                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -328,6 +335,79 @@ public struct PreferencesView: View {
                     }
                 }
                 .padding(20)
+            }
+
+            if !pinnedList.isEmpty || !forgottenList.isEmpty {
+                PreferencesCard() {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("候选偏好管理（置顶与已忽略词条）", systemImage: "pin.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.primary)
+
+                        if !pinnedList.isEmpty {
+                            Text("已置顶词条 (\(pinnedList.count))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            LazyVStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(pinnedList.enumerated()), id: \.offset) { _, item in
+                                    HStack {
+                                        Text(item.pinyin.replacingOccurrences(of: "wubi86:", with: ""))
+                                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(Color.accentColor)
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(item.word)
+                                            .font(.system(size: 12.5))
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        Button("取消置顶") {
+                                            UserLexicon.shared.setPinned(item.word, for: item.pinyin, pinned: false)
+                                            refreshStats()
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.secondary)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.primary.opacity(0.035))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                            }
+                        }
+
+                        if !forgottenList.isEmpty {
+                            Text("已忽略词条 (\(forgottenList.count))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            LazyVStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(forgottenList.enumerated()), id: \.offset) { _, item in
+                                    HStack {
+                                        Text(item.pinyin.replacingOccurrences(of: "wubi86:", with: ""))
+                                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(item.word)
+                                            .font(.system(size: 12.5))
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Button("恢复候选") {
+                                            UserLexicon.shared.unforget(item.word, for: item.pinyin)
+                                            refreshStats()
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.accentColor)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.primary.opacity(0.035))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
             }
         }
     }
@@ -431,9 +511,24 @@ public struct PreferencesView: View {
         return !code.isEmpty
     }
 
+    private var filteredCustomList: [(pinyin: String, phrase: String)] {
+        let query = phraseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return customList }
+        return customList.filter {
+            $0.pinyin.lowercased().contains(query) || $0.phrase.lowercased().contains(query)
+        }
+    }
+
     private func refreshStats() {
+        let isWubi = settings.pinyinScheme == .wubi86
         customList = UserLexicon.shared.allCustomPhrases().filter {
-            $0.pinyin.hasPrefix("wubi86:") == (settings.pinyinScheme == .wubi86)
+            $0.pinyin.hasPrefix("wubi86:") == isWubi
+        }
+        pinnedList = UserLexicon.shared.allPinnedWords().filter {
+            $0.pinyin.hasPrefix("wubi86:") == isWubi
+        }
+        forgottenList = UserLexicon.shared.allForgottenWords().filter {
+            $0.pinyin.hasPrefix("wubi86:") == isWubi
         }
         learnedCount = UserLexicon.shared.learnedEntryCount
         totalChars = UserLexicon.shared.totalCommittedCharacters

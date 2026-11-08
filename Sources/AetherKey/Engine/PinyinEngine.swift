@@ -1070,7 +1070,19 @@ public enum PinyinLexicon {
         "shijie": ["世界"],
         "zheshi": ["这是", "真实"],
         "yige": ["一个", "一首歌"],
-        "shiyong": ["使用", "实用", "适用"]
+        "shiyong": ["使用", "实用", "适用"],
+        "houmian": ["后面"],
+        "qianmian": ["前面"],
+        "limian": ["里面"],
+        "waimian": ["外面"],
+        "shangmian": ["上面"],
+        "xiamian": ["下面"],
+        "rangni": ["让你"],
+        "rangwo": ["让我"],
+        "woshenme": ["我什么"],
+        "baozheng": ["保证"],
+        "xingneng": ["性能"],
+        "shijian": ["时间", "事件", "实践"]
     ]
 
     /// High-frequency single character preferences when composing multi-syllable sentences
@@ -1086,7 +1098,9 @@ public enum PinyinLexicon {
         "hao": "好", "chi": "吃", "gei": "给", "bei": "被", "dui": "对",
         "cong": "从", "dao": "到", "wei": "为", "yong": "用", "ai": "爱",
         "tian": "天", "nian": "年", "yue": "月", "ri": "日", "dian": "点",
-        "fan": "饭", "shui": "水", "jia": "家", "che": "车"
+        "fan": "饭", "shui": "水", "jia": "家", "che": "车", "rang": "让",
+        "zhen": "真", "gang": "刚", "xian": "先", "bie": "别", "mei": "没",
+        "qing": "请", "wen": "问", "ting": "听", "xie": "写", "zuo": "做"
     ]
 
     /// Initial consonant / prefix to top full syllables in descending frequency order
@@ -1480,7 +1494,9 @@ public final class PinyinEngine: Sendable {
     private func segmentChunk(text: String, rawStart: Int, chunkFinalEnd: Int) -> [SyllableToken] {
         var normalized = text
         if normalized.contains("gn") && !PinyinLexicon.allSyllables.contains(normalized) {
-            normalized = normalized.replacingOccurrences(of: "gn", with: "ng")
+            for (typo, fix) in [("agn", "ang"), ("egn", "eng"), ("ign", "ing"), ("ogn", "ong")] where normalized.contains(typo) {
+                normalized = normalized.replacingOccurrences(of: typo, with: fix)
+            }
         }
         
         let chars = Array(normalized)
@@ -1504,9 +1520,9 @@ public final class PinyinEngine: Sendable {
                 let rawEnd = isEndOfChunk ? chunkFinalEnd : (rawStart + idx + len)
                 
                 if PinyinLexicon.allSyllables.contains(sub) {
-                    // Valid full syllable: low cost (10 per syllable, slight bonus for longer syllables)
-                    // Prefer splitting "zhansan" as "zhan"+"san", "xian" as "xian"
-                    let stepCost = 10
+                    // Valid full syllable: low cost (10 per syllable; rare standalone syllables penalized in multi-syllable strings)
+                    let isRareSyllable = n > len && Self.rareStandaloneSyllables.contains(sub)
+                    let stepCost = isRareSyllable ? 24 : 10
                     let newCost = cur.cost + stepCost
                     if dp[idx + len] == nil || newCost < dp[idx + len]!.cost {
                         let tok = SyllableToken(text: sub, rawEndOffset: rawEnd, isComplete: true)
@@ -1602,25 +1618,38 @@ public final class PinyinEngine: Sendable {
         return variants
     }
     
+    private static let rareStandaloneSyllables: Set<String> = [
+        "ng", "hm", "hng", "m", "n", "eng", "den", "nou", "chua", "kei", "tei", "zei", "nia", "yo", "ei", "bong", "cei", "din", "fiao"
+    ]
+
     /// Dynamic Programming Sentence Composer over segmented syllable tokens.
     /// Assembles multi-phrase sentences like "woxiangchifan" -> "我想吃饭", "jintiantianqizenmeyang" -> "今天天气怎么样".
     /// Bounded beam search keeps alternative word boundaries and homophones alive.
     /// Scores use phrase cohesion, dictionary order and local selections; no network model.
     private func composeSentences(tokens: [SyllableToken]) -> [String] {
-        guard tokens.count >= 2 else { return [] }
-        struct Path { let text: String; let score: Double }
+        // Never synthesize whole sentences when intermediate tokens are isolated incomplete consonants (typos/mashing).
+        guard tokens.count >= 2, tokens.count <= 12, tokens.dropLast().allSatisfy(\.isComplete) else { return [] }
+        struct Path {
+            let text: String
+            let score: Double
+            let hasPhrase: Bool
+            let allGrammarChars: Bool
+        }
         let beamWidth = 8
         var beams = Array(repeating: [Path](), count: tokens.count + 1)
-        beams[0] = [Path(text: "", score: 0)]
+        beams[0] = [Path(text: "", score: 0, hasPhrase: false, allGrammarChars: true)]
         for i in tokens.indices where !beams[i].isEmpty {
             for span in 1...min(6, tokens.count - i) {
                 let slice = tokens[i..<(i + span)]
                 guard slice.dropLast().allSatisfy(\.isComplete), let last = slice.last else { continue }
+                // Do not expand a trailing incomplete single consonant as a standalone character in 3+ syllable strings.
+                if span == 1 && !last.isComplete && tokens.count > 2 { continue }
                 let prefix = slice.dropLast().map(\.text).joined()
                 let endings = last.isComplete ? [last.text] : Array(expandPrefix(last.text).prefix(8))
-                var edges: [(String, Double)] = []
+                var edges: [(word: String, score: Double, isPhrase: Bool, isGrammarChar: Bool)] = []
                 for (expansionRank, ending) in endings.enumerated() {
                     let key = prefix + ending
+                    if span == 1 && tokens.count >= 2 && Self.rareStandaloneSyllables.contains(key) { continue }
                     var words = userLexicon.preferredWords(for: key)
                     if span == 1 {
                         // Do not fill whole-sentence alternatives with arbitrary homophones.
@@ -1646,22 +1675,91 @@ public final class PinyinEngine: Sendable {
                         let pinned = userLexicon.isPinned(word, for: key) ? 100.0 : 0
                         let score = cohesion + core + learned + pinned - Double(rank * 8 + expansionRank * 4)
                             - (last.isComplete ? 0 : Double(span * 5))
-                        edges.append((word, score))
+                        let isGrammar = span == 1 && PinyinLexicon.sentenceSingleCharMap[key] == word
+                        let isPhrase = span > 1 && (last.isComplete || span == tokens.count)
+                        edges.append((word, score, isPhrase, isGrammar))
                     }
                 }
                 var paths = beams[i + span]
                 for path in beams[i] {
-                    for (word, score) in edges { paths.append(Path(text: path.text + word, score: path.score + score)) }
+                    for edge in edges {
+                        paths.append(Path(
+                            text: path.text + edge.word,
+                            score: path.score + edge.score,
+                            hasPhrase: path.hasPhrase || edge.isPhrase,
+                            allGrammarChars: path.allGrammarChars && edge.isGrammarChar
+                        ))
+                    }
                 }
                 paths.sort { $0.score == $1.score ? $0.text < $1.text : $0.score > $1.score }
                 var seen = Set<String>()
                 beams[i + span] = Array(paths.filter { seen.insert($0.text).inserted }.prefix(beamWidth))
             }
         }
-        let completed = beams[tokens.count]
+        // Reject paths made purely by gluing 3+ unrelated single-character fallbacks (e.g. "后米娜" for "houmina").
+        let completed = beams[tokens.count].filter { $0.hasPhrase || $0.allGrammarChars }
         guard let best = completed.first else { return [] }
         // Weak boundaries such as 我 + 相持 + 饭 must not crowd out useful prefix choices.
         return Array(completed.filter { $0.score >= best.score - 40 }.prefix(5).map(\.text))
+    }
+
+    /// Generates typo-corrected pinyin keys for common transpositions, missing vowels, and double-tapped consonants.
+    private func typoCorrectedKeys(for stripped: String) -> [String] {
+        guard stripped.count >= 3, stripped.count <= 24 else { return [] }
+        var corrected: [String] = []
+        var seen: Set<String> = [stripped]
+        func push(_ candidate: String) {
+            if !candidate.isEmpty, seen.insert(candidate).inserted {
+                corrected.append(candidate)
+            }
+        }
+
+        // 1. Common vowel/nasal transpositions & missing-vowel repairs
+        let replacements: [(String, String)] = [
+            ("shemm", "shenm"),
+            ("ina", "ian"),
+            ("ain", "ian"),
+            ("neg", "eng"),
+            ("egn", "eng"),
+            ("nag", "ang"),
+            ("agn", "ang"),
+            ("ign", "ing"),
+            ("ogn", "ong"),
+            ("una", "uan"),
+            ("aun", "uan"),
+            ("shn", "shen"),
+            ("zhn", "zhen"),
+            ("chn", "chen"),
+            ("mg", "ng"),
+            ("uen", "un"),
+            ("iou", "iu"),
+            ("uei", "ui")
+        ]
+        for (typo, fix) in replacements where stripped.contains(typo) {
+            push(stripped.replacingOccurrences(of: typo, with: fix))
+        }
+
+        // 2. Trailing redundant nasal after 'uo' (e.g. "gongzuong" -> "gongzuo")
+        if stripped.hasSuffix("uong") {
+            push(String(stripped.dropLast(2)))
+        }
+
+        // 3. Double-tapped consonant deduplication (e.g. "rangnni" -> "rangni", "hhaosha" -> "haosha")
+        let chars = Array(stripped)
+        let nonCodaConsonants = Set("bpmfdtlkhjqxzcsyw")
+        let allConsonants = Set("bpmfdtnlgkhjqxrzcsyw")
+        let vowels = Set("aeiouv")
+        for i in 0..<(chars.count - 1) where chars[i] == chars[i + 1] {
+            let hasFollowingVowel = (i + 2 < chars.count) && vowels.contains(chars[i + 2])
+            let isNonCodaDouble = nonCodaConsonants.contains(chars[i]) && hasFollowingVowel
+            let isPostConsonantNasalDouble = (chars[i] == "n" || chars[i] == "g") && i > 0 && allConsonants.contains(chars[i - 1]) && hasFollowingVowel
+            if isNonCodaDouble || isPostConsonantNasalDouble {
+                var dedup = chars
+                dedup.remove(at: i + 1)
+                push(String(dedup))
+            }
+        }
+        return corrected
     }
 
     /// Queries candidate list for given raw pinyin buffer.
@@ -1745,10 +1843,41 @@ public final class PinyinEngine: Sendable {
                     addCandidate(word: word)
                 }
             }
+
+            // 4-typo. If no exact lexicon phrase or syllable matched (e.g. transposition "houmina", "shijain", "baozhneg", "xinag", "shemme", "gongzuong"),
+            // promote high-confidence typo corrections BEFORE synthesizing broken multi-token fallbacks.
+            var matchedTypoCorrection = false
+            if candidates.isEmpty, !hasExplicitApostrophe {
+                for fixedKey in typoCorrectedKeys(for: stripped) {
+                    let beforeCount = candidates.count
+                    if let corePhrases = PinyinLexicon.builtinCorePhrases[fixedKey] {
+                        for word in corePhrases { addCandidate(word: word) }
+                    }
+                    if let placePhrases = PinyinLexicon.builtinPlacePhrases[fixedKey] {
+                        for word in placePhrases { addCandidate(word: word) }
+                    }
+                    if let phrases = PinyinLexicon.commonPhrases[fixedKey] {
+                        for word in phrases.prefix(6) { addCandidate(word: word) }
+                    }
+                    if PinyinLexicon.initialExpansions[fixedKey] == nil,
+                       let chars = PinyinLexicon.syllablesChars[fixedKey] {
+                        for c in chars.prefix(6) { addCandidate(word: c) }
+                    }
+                    let fixedTokens = segmentTokens(rawInput: fixedKey)
+                    if fixedTokens.count >= 2, fixedTokens.allSatisfy(\.isComplete) {
+                        for composed in composeSentences(tokens: fixedTokens) {
+                            addCandidate(word: composed)
+                        }
+                    }
+                    if candidates.count > beforeCount {
+                        matchedTypoCorrection = true
+                    }
+                }
+            }
             
             // 4a. If trailing token is an incomplete syllable/initial (e.g. "nih" -> ["ni", "h"], "zhongg" -> ["zhong", "g"]),
             // expand trailing prefix and match core phrases first, then general lexicon phrases!
-            if tokens.count >= 2, let lastTok = tokens.last, !lastTok.isComplete {
+            if !matchedTypoCorrection, tokens.count >= 2, let lastTok = tokens.last, !lastTok.isComplete {
                 let prefixJoined = tokens.dropLast().map(\.text).joined()
                 let expandedList = Array(expandPrefix(lastTok.text).prefix(10))
                 for expanded in expandedList {
@@ -1770,7 +1899,7 @@ public final class PinyinEngine: Sendable {
             }
             
             // 4b. Dynamic Programming full sentence composition (e.g. "woxiangchifan" -> "我想吃饭", "jintiantianqizenmeyang" -> "今天天气怎么样")
-            if tokens.count >= 2 {
+            if !matchedTypoCorrection, tokens.count >= 2 {
                 for composed in composeSentences(tokens: tokens) {
                     addCandidate(word: composed)
                 }
@@ -1868,10 +1997,10 @@ public final class PinyinEngine: Sendable {
             for character in characters { addCandidate(word: character) }
         }
 
-        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (an<->ang, en<->eng, in<->ing, gn->ng, mg->ng, uen->un, iou->iu, uei->ui)
+        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (an<->ang, en<->eng, in<->ing, agn/egn/ign/ogn->ang/eng/ing/ong, mg->ng, uen->un, iou->iu, uei->ui)
         if AetherSettings.shared.isFuzzyPinyinEnabled {
             var fuzzyKeys: [String] = []
-            for (typo, corr) in [("gn", "ng"), ("mg", "ng"), ("uen", "un"), ("iou", "iu"), ("uei", "ui")] {
+            for (typo, corr) in [("agn", "ang"), ("egn", "eng"), ("ign", "ing"), ("ogn", "ong"), ("mg", "ng"), ("uen", "un"), ("iou", "iu"), ("uei", "ui")] {
                 if stripped.contains(typo) {
                     fuzzyKeys.append(stripped.replacingOccurrences(of: typo, with: corr))
                 }

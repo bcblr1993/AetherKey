@@ -10,6 +10,8 @@ public final class SmartPunctuation: @unchecked Sendable {
     private var isSingleQuoteOpen: Bool = false
     private var isOpenCornerBracketInner: Bool = false
     private var isCloseCornerBracketInner: Bool = false
+    private enum PairKind { case doubleQuote, singleQuote, openCorner, closeCorner }
+    private var lastConvertedPair: PairKind? = nil
     
     /// Aligned with Sogou Pinyin's `symbolset2.plist` (`jian-ban` Simplified Chinese punctuation table)
     private let punctuationMap: [Character: String] = [
@@ -45,7 +47,22 @@ public final class SmartPunctuation: @unchecked Sendable {
         isSingleQuoteOpen = false
         isOpenCornerBracketInner = false
         isCloseCornerBracketInner = false
+        lastConvertedPair = nil
         lock.unlock()
+    }
+
+    /// Reverts the most recent paired quote/bracket toggle when the user immediately backspaces it.
+    public func rollbackLastQuoteIfNeeded() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let last = lastConvertedPair else { return }
+        switch last {
+        case .doubleQuote: isDoubleQuoteOpen.toggle()
+        case .singleQuote: isSingleQuoteOpen.toggle()
+        case .openCorner: isOpenCornerBracketInner.toggle()
+        case .closeCorner: isCloseCornerBracketInner.toggle()
+        }
+        lastConvertedPair = nil
     }
     
     /// Converts input character to smart punctuation.
@@ -54,6 +71,7 @@ public final class SmartPunctuation: @unchecked Sendable {
     public func convert(char: Character, precedingChar: Character?) -> String {
         // Decimal point retention rule: e.g. 3.14, 0.05
         if char == "." {
+            lock.lock(); lastConvertedPair = nil; lock.unlock()
             if let prev = precedingChar, prev.isNumber {
                 return "."
             }
@@ -62,6 +80,7 @@ public final class SmartPunctuation: @unchecked Sendable {
         
         // Colon retention in time or ratio: e.g. 12:30
         if char == ":" {
+            lock.lock(); lastConvertedPair = nil; lock.unlock()
             if let prev = precedingChar, prev.isNumber {
                 return ":"
             }
@@ -73,6 +92,7 @@ public final class SmartPunctuation: @unchecked Sendable {
             lock.lock()
             let result = isDoubleQuoteOpen ? "”" : "“"
             isDoubleQuoteOpen.toggle()
+            lastConvertedPair = .doubleQuote
             lock.unlock()
             return result
         }
@@ -82,6 +102,7 @@ public final class SmartPunctuation: @unchecked Sendable {
             lock.lock()
             let result = isSingleQuoteOpen ? "’" : "‘"
             isSingleQuoteOpen.toggle()
+            lastConvertedPair = .singleQuote
             lock.unlock()
             return result
         }
@@ -91,6 +112,7 @@ public final class SmartPunctuation: @unchecked Sendable {
             lock.lock()
             let result = isOpenCornerBracketInner ? "『" : "「"
             isOpenCornerBracketInner.toggle()
+            lastConvertedPair = .openCorner
             lock.unlock()
             return result
         }
@@ -98,10 +120,12 @@ public final class SmartPunctuation: @unchecked Sendable {
             lock.lock()
             let result = isCloseCornerBracketInner ? "』" : "」"
             isCloseCornerBracketInner.toggle()
+            lastConvertedPair = .closeCorner
             lock.unlock()
             return result
         }
         
+        lock.lock(); lastConvertedPair = nil; lock.unlock()
         return punctuationMap[char] ?? String(char)
     }
     

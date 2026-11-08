@@ -91,13 +91,22 @@ public enum DoublePinyin {
     public static func query(_ raw: String, scheme: PinyinScheme, precedingText: String = "") -> [Candidate] {
         if scheme == .wubi86 { return WubiEngine.shared.query(raw) }
         guard scheme != .full else { return PinyinEngine.shared.query(rawInput: raw, precedingText: precedingText) }
+        let stripped = raw.lowercased().replacingOccurrences(of: "'", with: "")
         guard let tokens = tokens(raw, scheme: scheme), !tokens.isEmpty else {
-            return [Candidate(text: raw, comment: "英", consumedInputLength: raw.count)]
+            var fallback: [Candidate] = []
+            var seen = Set<String>()
+            if let abbrWords = PinyinLexicon.commonAbbreviations[stripped] {
+                for word in abbrWords where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+                    fallback.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
+                }
+            }
+            fallback.append(Candidate(text: raw, comment: "英", consumedInputLength: raw.count))
+            return fallback
         }
         // Preserve genuine layout collisions (for example lo/luo) instead of dropping rare readings.
         var variants: [[String]] = [[]]
         for token in tokens {
-            variants = Array(variants.flatMap { prefix in token.readings.map { prefix + [$0] } }.prefix(16))
+            variants = Array(variants.flatMap { prefix in token.readings.map { prefix + [$0] } }.prefix(32))
         }
         var result: [Candidate] = []; var seen = Set<String>()
         for syllables in variants {
@@ -114,6 +123,11 @@ public enum DoublePinyin {
                 result.append(Candidate(text: candidate.text, comment: candidate.comment,
                                         pinyin: String(decoded.prefix(consumed)), isEmoji: candidate.isEmoji,
                                         consumedInputLength: boundary.raw))
+            }
+        }
+        if stripped.count >= 3, let abbrWords = PinyinLexicon.commonAbbreviations[stripped] {
+            for word in abbrWords where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+                result.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
             }
         }
         result.append(Candidate(text: raw, comment: "英", consumedInputLength: raw.count))

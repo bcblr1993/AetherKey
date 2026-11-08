@@ -37,6 +37,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private var shiftPressTime: TimeInterval = 0
     private var shiftSoleModifier: Bool = false
     private var lastCommittedChar: Character? = nil
+    private var lastLearnedCommits: [(pinyin: String, word: String)] = []
+    private var lastCommitWasSmartPunctuation: Bool = false
     private var compositionContext = ""
     private var committedContext = ""
     private var committedContextEnd: Int?
@@ -44,7 +46,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     
     // MARK: - IMK Lifecycle
     public override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
-        super.init(server: server, delegate: delegate, client: inputClient)
+        super.init(server: server, delegate: delegate, client: server == nil ? nil : inputClient)
         self.activeClient = inputClient as AnyObject?
     }
 
@@ -62,6 +64,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     public override func deactivateServer(_ sender: Any!) {
         committedContext = ""
         committedContextEnd = nil
+        lastCommittedChar = nil
+        lastLearnedCommits.removeAll()
+        lastCommitWasSmartPunctuation = false
+        SmartPunctuation.shared.resetState()
         if !buffer.isEmpty {
             resetComposition(client: sender)
         }
@@ -80,9 +86,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let settings = AetherSettings.shared
         
         let dictionaryTitle = settings.pinyinScheme == .wubi86
-            ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码" : "53.3万拼音词库"
+            ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码"
+            : "\(PinyinLexicon.entryCount.formatted()) 条拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.4") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.9") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -337,13 +344,17 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 updateClientMarkedText(client: sender); renderPanel(client: sender)
                 return true
                 
-            // Page Previous: '-' (without Shift, outside v-mode) or PageUp (116)
-            case 27 where !flags.contains(.shift) && !isCalculatorComposition, 116:
+            // Page Previous: '-' (27) or '[' (33) (without Shift, outside v-mode) or PageUp (116)
+            case 27 where !flags.contains(.shift) && !isCalculatorComposition,
+                 33 where !flags.contains(.shift) && !isCalculatorComposition,
+                 116:
                 flipPage(delta: -1, client: sender)
                 return true
                 
-            // Page Next: '=' (without Shift, outside v-mode) or PageDown (121)
-            case 24 where !flags.contains(.shift) && !isCalculatorComposition, 121:
+            // Page Next: '=' (24) or ']' (30) (without Shift, outside v-mode) or PageDown (121)
+            case 24 where !flags.contains(.shift) && !isCalculatorComposition,
+                 30 where !flags.contains(.shift) && !isCalculatorComposition,
+                 121:
                 flipPage(delta: 1, client: sender)
                 return true
                 
@@ -368,12 +379,36 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             }
         }
         
+        // 3. State Machine: Buffer is Empty
+        if buffer.isEmpty {
+            if keyCode == 51 && flags.intersection([.command, .control, .option]).isEmpty {
+                for entry in lastLearnedCommits {
+                    UserLexicon.shared.rollbackCommit(pinyin: entry.pinyin, word: entry.word)
+                }
+                lastLearnedCommits.removeAll()
+                if lastCommitWasSmartPunctuation {
+                    SmartPunctuation.shared.rollbackLastQuoteIfNeeded()
+                    lastCommitWasSmartPunctuation = false
+                }
+                lastCommittedChar = nil
+                if !committedContext.isEmpty {
+                    committedContext.removeLast()
+                }
+                return false
+            }
+            if [123, 124, 125, 126, 115, 119, 116, 121, 36, 76].contains(keyCode) {
+                lastLearnedCommits.removeAll()
+                lastCommitWasSmartPunctuation = false
+                lastCommittedChar = nil
+                return false
+            }
+        }
+
         // Intercept characters for composition insertion and punctuation
         guard let characters = event.characters, !characters.isEmpty else {
             return false
         }
         
-        // 3. State Machine: Buffer is Empty
         if buffer.isEmpty {
             if let firstChar = characters.first, firstChar.isASCII && firstChar.isLetter {
                 // Uppercase ASCII letters (Shift+Letter or CapsLock) pass through directly in Chinese mode
@@ -381,6 +416,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     let formatted = AetherSettings.shared.isPanguSpacingEnabled
                         ? PanguSpacing.shared.formatCommitText(preceding: lastCommittedChar, committing: characters)
                         : characters
+                    lastLearnedCommits.removeAll()
+                    lastCommitWasSmartPunctuation = false
                     commitDirect(text: formatted, client: sender)
                     return true
                 }
@@ -400,12 +437,16 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 let converted = AetherSettings.shared.usesChinesePunctuation
                     ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: lastCommittedChar)
                     : String(firstChar)
+                lastLearnedCommits.removeAll()
+                lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
                 commitDirect(text: converted, client: sender)
                 return true
             }
             
             // Record raw digit or ASCII character for contextual decimal/Pangu tracking
             if let firstChar = characters.first, firstChar.isNumber {
+                lastLearnedCommits.removeAll()
+                lastCommitWasSmartPunctuation = false
                 lastCommittedChar = firstChar
             }
             
@@ -455,6 +496,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 let converted = AetherSettings.shared.usesChinesePunctuation
                     ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: lastCommittedChar)
                     : String(firstChar)
+                lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
                 commitDirect(text: converted, client: sender)
                 return true
             }
@@ -567,6 +609,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private func insertComposition(_ text: String) {
         if buffer.isEmpty {
             compositionScheme = AetherSettings.shared.pinyinScheme
+            candidateViewMode = AetherSettings.shared.defaultViewMode
             compositionContext = precedingContext(client: activeClient)
             committedContext = compositionContext
         }
@@ -763,6 +806,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             // Accumulate partial composed text and keep remaining pinyin in buffer!
             let consumedPinyin = candidateReading(candidate)
             UserLexicon.shared.recordCommit(pinyin: consumedPinyin, word: candidate.text)
+            lastLearnedCommits = [(pinyin: consumedPinyin, word: candidate.text)]
+            lastCommitWasSmartPunctuation = false
             
             let formattedPart = AetherSettings.shared.isPanguSpacingEnabled
                 ? PanguSpacing.shared.formatCommitText(preceding: lastCommittedChar, committing: candidate.text)
@@ -779,11 +824,17 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         // Full buffer commit
         let fullPinyin = candidateReading(candidate)
+        lastLearnedCommits.removeAll()
+        lastCommitWasSmartPunctuation = false
         if !isCalculatorComposition && candidate.comment != "英" && !candidate.isEmoji {
             UserLexicon.shared.recordCommit(pinyin: fullPinyin, word: candidate.text)
+            lastLearnedCommits.append((pinyin: fullPinyin, word: candidate.text))
             if !partialComposedText.isEmpty && !originalFullBuffer.isEmpty {
                 // Also learn the complete multi-part phrase the user assembled!
-                UserLexicon.shared.recordCommit(pinyin: DoublePinyin.reading(originalFullBuffer, scheme: compositionScheme), word: partialComposedText + candidate.text)
+                let assembledReading = DoublePinyin.reading(originalFullBuffer, scheme: compositionScheme)
+                let assembledWord = partialComposedText + candidate.text
+                UserLexicon.shared.recordCommit(pinyin: assembledReading, word: assembledWord)
+                lastLearnedCommits.append((pinyin: assembledReading, word: assembledWord))
             }
         }
         

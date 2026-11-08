@@ -1648,4 +1648,136 @@ extension CompositionEditingTests {
         #expect(wubi.query(wlkjcCode).contains { $0.text == "未来科技城" })
         #expect(wubi.query("zweilaikejicheng").contains { $0.text == "未来科技城" && $0.comment == wlkjcCode })
     }
+
+    @Test @MainActor
+    func typoCorrectionAndSentenceIntegrityPreventGarbageComposition() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: tempURL))
+
+        // 1. Common transposition & double-tap typos must rank the intended word at #1 and never synthesize isolated-consonant garbage
+        let typoCases: [(input: String, expectedTop: String, forbiddenGarbage: String)] = [
+            ("houmina", "后面", "后米娜"),
+            ("shijain", "时间", "时间爱你"),
+            ("baozhneg", "保证", "保证呢个"),
+            ("xinag", "想", "西那个"),
+            ("shemme", "什么", "社么么"),
+            ("xingnegn", "性能", "新哽鞥"),
+            ("rangnni", "让你", "然哽你"),
+            ("woshnme", "我什么", "我是能么")
+        ]
+        for item in typoCases {
+            let results = engine.query(rawInput: item.input)
+            #expect(results.first?.text == item.expectedTop, "Expected \(item.expectedTop) at #1 for typo \(item.input), got \(String(describing: results.first?.text))")
+            #expect(!results.contains { $0.text == item.forbiddenGarbage }, "Forbidden garbage \(item.forbiddenGarbage) appeared for \(item.input)")
+        }
+
+        // Trailing redundant nasal typo "gongzuong" offers "工作" and never synthesizes "工作哽"
+        let gongzuong = engine.query(rawInput: "gongzuong")
+        #expect(gongzuong.contains { $0.text == "工作" })
+        #expect(!gongzuong.contains { $0.text == "工作哽" })
+
+        // 2. Random consonant mashing must not synthesize long nonsense Chinese sentences
+        for mash in ["dfgjfdlgkjfdklgjdfjgdfklgdf", "nihaogfdjgkldfgjkldfgfd", "nfjgfdlkjgdfklgjdfklgjdfklg"] {
+            let candidates = engine.query(rawInput: mash)
+            #expect(!candidates.contains { $0.comment != "英" && $0.text.count >= 6 }, "Mash \(mash) should not synthesize long Chinese sentence")
+        }
+    }
+
+    @Test @MainActor
+    func userLexiconHygieneBackspaceUndoAndPinnedForgottenManagement() throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let lexicon = UserLexicon(storageURL: tempURL)
+        let engine = PinyinEngine(userLexicon: lexicon)
+
+        // 1. Single-letter ordinary frequency learning must not hijack initial-prefix default ranking
+        lexicon.recordCommit(pinyin: "w", word: "握")
+        lexicon.recordCommit(pinyin: "c", word: "瓷")
+        #expect(engine.query(rawInput: "w").first?.text == "我")
+        #expect(engine.query(rawInput: "c").first?.text == "此")
+
+        // Explicit pin on single letter still works
+        lexicon.setPinned("握", for: "w", pinned: true)
+        #expect(engine.query(rawInput: "w").first?.text == "握")
+        lexicon.setPinned("握", for: "w", pinned: false)
+        #expect(lexicon.allPinnedWords().isEmpty)
+
+        // 2. Reject overlong / consonant-mash garbage from polluting frequencyTable
+        lexicon.recordCommit(pinyin: "dfgjfdlgkjfdklgjdfjgdfklgdf", word: "的法国机法的了国可机法的可了国机的法机国的法可了国的法")
+        #expect(lexicon.selectionCount("的法国机法的了国可机法的可了国机的法机国的法可了国的法", for: "dfgjfdlgkjfdklgjdfjgdfklgdf") == 0)
+
+        // 3. Pinned and forgotten word enumeration & unforget cleanup
+        lexicon.setPinned("常州", for: "changzhou", pinned: true)
+        lexicon.forget("长洲", for: "changzhou")
+        #expect(lexicon.allPinnedWords().contains { $0.pinyin == "changzhou" && $0.word == "常州" })
+        #expect(lexicon.allForgottenWords().contains { $0.pinyin == "changzhou" && $0.word == "长洲" })
+        lexicon.unforget("长洲", for: "changzhou")
+        #expect(!lexicon.isForgotten("长洲", for: "changzhou"))
+        #expect(lexicon.allForgottenWords().isEmpty)
+
+        // 4. Backspace immediately after committing a word rolls back the learned frequency increment
+        let beforeCount = UserLexicon.shared.selectionCount("测试", for: "ceshi")
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        _ = controller.inputText("ceshi", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(UserLexicon.shared.selectionCount("测试", for: "ceshi") == beforeCount + 1)
+        // User immediately presses Backspace when buffer is empty to delete the mistaken commit
+        let passThrough = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+        #expect(passThrough == false)
+        #expect(UserLexicon.shared.selectionCount("测试", for: "ceshi") == beforeCount)
+    }
+
+    @Test @MainActor
+    func bracketPagingContextualPanguQuoteResetAndDoublePinyinJianpin() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+
+        // 1. '[' (keyCode 33) and ']' (keyCode 30) flip pages during composition instead of committing punctuation
+        _ = controller.inputText("shi", client: client)
+        #expect(CandidatePanelHolder.shared.state.currentPage == 1)
+        let nextHandled = controller.handle(makeKeyEvent(char: "]", keyCode: 30), client: client)
+        #expect(nextHandled == true)
+        #expect(CandidatePanelHolder.shared.state.currentPage == 2)
+        #expect(client.insertedText.isEmpty)
+        let prevHandled = controller.handle(makeKeyEvent(char: "[", keyCode: 33), client: client)
+        #expect(prevHandled == true)
+        #expect(CandidatePanelHolder.shared.state.currentPage == 1)
+        controller.resetComposition(client: client)
+
+        // 2. Contextual Pangu spacing: deleting committed Chinese text before typing uppercase ASCII must not prepend a space
+        _ = controller.inputText("ni", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        #expect(client.insertedText == "你")
+        // Simulate user deleting "你" with Backspace
+        client.insertedText = ""
+        _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+        _ = controller.handle(makeKeyEvent(char: "A", keyCode: 0, modifiers: [.shift]), client: client)
+        #expect(client.insertedText == "A")
+
+        // 3. SmartPunctuation quote pairing rolls back when immediately backspaced and resets on deactivateServer
+        SmartPunctuation.shared.resetState()
+        client.insertedText = ""
+        _ = controller.handle(makeKeyEvent(char: "\"", keyCode: 39), client: client)
+        #expect(client.insertedText == "“")
+        // Immediately backspace the opening quote -> next quote should still be opening "“"
+        client.insertedText = ""
+        _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+        _ = controller.handle(makeKeyEvent(char: "\"", keyCode: 39), client: client)
+        #expect(client.insertedText == "“")
+        // Deactivating server also resets open quote state
+        controller.deactivateServer(client)
+        client.insertedText = ""
+        _ = controller.handle(makeKeyEvent(char: "\"", keyCode: 39), client: client)
+        #expect(client.insertedText == "“")
+
+        // 4. DoublePinyin falls back to commonAbbreviations when input is a known abbreviation (e.g. "srf", "zgc")
+        #expect(DoublePinyin.query("srf", scheme: .flypy).contains { $0.text == "输入法" })
+        #expect(DoublePinyin.query("zgc", scheme: .microsoft).contains { $0.text == "中关村" })
+    }
 }
