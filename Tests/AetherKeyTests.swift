@@ -69,10 +69,13 @@ final class MockTextInputClient: NSObject, IMKTextInput, @unchecked Sendable {
     func overrideKeyboard(withKeyboardNamed keyboardUniqueName: String?) {}
     func selectMode(_ modeIdentifier: String?) {}
     func supportsUnicode() -> Bool { return true }
-    func bundleIdentifier() -> String? { return "com.apple.Notes" }
-    func windowLevel() -> CGWindowLevel { return 0 }
+    var mockBundleIdentifier: String? = "com.apple.Notes"
+    var mockWindowLevel: CGWindowLevel = 0
+    var mockUniqueID: String? = "mock-notes-client"
+    func bundleIdentifier() -> String? { return mockBundleIdentifier }
+    func windowLevel() -> CGWindowLevel { return mockWindowLevel }
     func supportsProperty(_ property: TSMDocumentPropertyTag) -> Bool { return true }
-    func uniqueClientIdentifierString() -> String? { return "mock-notes-client" }
+    func uniqueClientIdentifierString() -> String? { return mockUniqueID }
     func string(from range: NSRange, actualRange: NSRangePointer?) -> String? { return nil }
     func firstRect(forCharacterRange aRange: NSRange, actualRange: NSRangePointer?) -> NSRect {
         lastFirstRectRange = aRange
@@ -97,6 +100,21 @@ func makeKeyEvent(char: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlag
         context: nil,
         characters: char,
         charactersIgnoringModifiers: char,
+        isARepeat: false,
+        keyCode: keyCode
+    )!
+}
+
+func makeFlagsEvent(modifiers: NSEvent.ModifierFlags, keyCode: UInt16 = 56, timestamp: TimeInterval = 0) -> NSEvent {
+    return NSEvent.keyEvent(
+        with: .flagsChanged,
+        location: .zero,
+        modifierFlags: modifiers,
+        timestamp: timestamp,
+        windowNumber: 0,
+        context: nil,
+        characters: "",
+        charactersIgnoringModifiers: "",
         isARepeat: false,
         keyCode: keyCode
     )!
@@ -567,16 +585,16 @@ struct AetherKeyEngineTests {
         #expect(moved.minX == min(movedCaret.minX, screen.maxX - moved.width - 8))
     }
 
-    @Test("Input method queries the moving insertion end of marked text")
+    @Test("Input method anchors at the start of marked text instead of chasing its moving end")
     @MainActor
     func testCandidateCaretQueryFollowsMarkedText() {
         let client = MockTextInputClient()
         client.attributesCaretRect = .zero
         let controller = AetherInputController(server: nil, delegate: nil, client: nil)!
         _ = controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: client)
-        #expect(client.lastFirstRectRange == NSRange(location: 1, length: 0))
+        #expect(client.lastFirstRectRange == NSRange(location: 0, length: 0))
         _ = controller.handle(makeKeyEvent(char: "i", keyCode: 34), client: client)
-        #expect(client.lastFirstRectRange == NSRange(location: 2, length: 0))
+        #expect(client.lastFirstRectRange == NSRange(location: 0, length: 0))
         controller.resetComposition(client: client)
     }
 
@@ -585,23 +603,23 @@ struct AetherKeyEngineTests {
         let denormal = 1.6080749353408704e-314
         #expect(!CandidateCaretGeometry.isUsable(NSRect(x: denormal, y: 0, width: denormal, height: denormal)))
         #expect(!CandidateCaretGeometry.isUsable(.zero))
+        #expect(!CandidateCaretGeometry.isUsable(NSRect(x: 0, y: 0, width: 0, height: 22)))
         #expect(!CandidateCaretGeometry.isUsable(NSRect(x: CGFloat.nan, y: 10, width: 1, height: 16)))
         #expect(CandidateCaretGeometry.isUsable(NSRect(x: 550, y: 86, width: 1, height: 16)))
         #expect(CandidateCaretGeometry.isUsable(NSRect(x: -300, y: -200, width: 0, height: 22)))
-        #expect(CandidateCaretGeometry.isUsable(NSRect(x: 0, y: 0, width: 0, height: 22)))
+        #expect(CandidateCaretGeometry.isUsable(NSRect(x: 0, y: 500, width: 0, height: 22)))
     }
 
-    @Test("Candidate popup follows ordinary horizontal caret movement instead of locking its origin")
+    @Test("Candidate popup locks its origin on the same line and re-anchors only on line wraps")
     func testCandidatePanelFollowsCaret() {
         let screen = NSRect(x: 0, y: 0, width: 1600, height: 900)
         let caret = NSRect(x: 200, y: 500, width: 0, height: 22)
         let size = NSSize(width: 572, height: 80.5)
         var placement = CandidatePanelPlacement()
         let first = placement.frame(caret: caret, size: size, screen: screen)
-        for advance in [8.0, 16.0, 24.0, 40.0, 80.0] {
-            let moved = placement.frame(caret: caret.offsetBy(dx: advance, dy: 0), size: size, screen: screen)
-            #expect(abs(moved.minX - first.minX - CGFloat(advance)) < 0.01)
-            #expect(moved.minY == first.minY)
+        for (advance, dy) in [(8.0, 0.0), (16.0, 2.0), (24.0, -3.0), (40.0, 4.0), (80.0, 0.0)] {
+            let locked = placement.frame(caret: caret.offsetBy(dx: advance, dy: dy), size: size, screen: screen)
+            #expect(locked.origin == first.origin)
         }
         let wrapped = placement.frame(caret: caret.offsetBy(dx: -60, dy: -24), size: size, screen: screen)
         #expect(wrapped.minX == caret.minX - 60)
@@ -1779,5 +1797,191 @@ extension CompositionEditingTests {
         // 4. DoublePinyin falls back to commonAbbreviations when input is a known abbreviation (e.g. "srf", "zgc")
         #expect(DoublePinyin.query("srf", scheme: .flypy).contains { $0.text == "输入法" })
         #expect(DoublePinyin.query("zgc", scheme: .microsoft).contains { $0.text == "中关村" })
+    }
+
+    @Test("Panel keeps monotonic width within a session, re-anchors on partial commit, elevates level, and displays edit cursor")
+    @MainActor
+    func panelStabilityReanchorLevelAndEditCursor() {
+        let panel = CandidatePanel()
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let rightEdgeCaret = NSRect(x: screen.maxX - 80, y: screen.midY, width: 0, height: 22)
+        panel.state.candidates = ["你好世界", "输入法", "候选词", "跟随光标", "自然输入", "中文", "排版"].map { Candidate(text: $0) }
+        panel.show(caretRect: rightEdgeCaret, clientWindowLevel: Int32(NSWindow.Level.popUpMenu.rawValue) + 5)
+        let wideFrame = panel.frame
+        #expect(panel.level.rawValue > NSWindow.Level.popUpMenu.rawValue)
+
+        // Turning to a shorter page must not shrink the panel width or cause the left edge to bounce right.
+        panel.state.candidates = [Candidate(text: "一"), Candidate(text: "二")]
+        panel.show(caretRect: rightEdgeCaret)
+        #expect(panel.frame.width == wideFrame.width)
+        #expect(panel.frame.minX == wideFrame.minX)
+
+        // Switching view mode recalculates width for the new layout.
+        panel.state.viewMode = .scroll
+        panel.show(caretRect: rightEdgeCaret)
+        #expect(panel.frame.width <= wideFrame.width)
+        panel.dismiss()
+
+        // Controller anchors at initial caret, shows cursor bar during mid-buffer edit, and re-anchors after partial commit.
+        let settings = AetherSettings.shared
+        let prevScheme = settings.pinyinScheme
+        defer { settings.pinyinScheme = prevScheme }
+        settings.pinyinScheme = .full
+        let client = MockTextInputClient()
+        client.caretRect = NSRect(x: 220, y: 500, width: 0, height: 22)
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        _ = controller.inputText("nihao", client: client)
+        let startOrigin = CandidatePanelHolder.shared.frame.origin
+        client.caretRect = NSRect(x: 245, y: 500, width: 0, height: 22)
+        _ = controller.handle(makeKeyEvent(char: "", keyCode: 123), client: client)
+        #expect(CandidatePanelHolder.shared.state.displayPinyin.contains("▏"))
+        #expect(CandidatePanelHolder.shared.frame.origin == startOrigin)
+        controller.resetComposition(client: client)
+
+        client.caretRect = NSRect(x: 220, y: 500, width: 0, height: 22)
+        _ = controller.inputText("jintiantianqi", client: client)
+        let prefixIdx = CandidatePanelHolder.shared.state.candidates.firstIndex { $0.text == "今天" }
+        if let idx = prefixIdx, idx < 7 {
+            client.caretRect = NSRect(x: 265, y: 500, width: 0, height: 22)
+            _ = controller.handle(makeKeyEvent(char: String(idx + 1), keyCode: 18), client: client)
+            #expect(CandidatePanelHolder.shared.frame.minX == 265)
+        }
+        controller.resetComposition(client: client)
+    }
+
+    @Test("V-mode RMB capitalization handles rounding carry safely without crashing and inserts financial zeroes")
+    func vModeRmbRoundingAndFinancialZeroes() {
+        let calc = VModeCalculator.shared
+        #expect(calc.convertToRMB(amount: 1.999) == "贰元整")
+        #expect(calc.convertToRMB(amount: 9.996) == "壹拾元整")
+        #expect(calc.convertToRMB(amount: 0.009) == "零元壹分")
+        #expect(calc.candidates(for: "v1.999").contains { $0.text == "贰元整" })
+        #expect(calc.convertToRMB(amount: 100_100) == "壹拾万零壹佰元整")
+        #expect(calc.convertToRMB(amount: 101_000) == "壹拾万壹仟元整")
+        #expect(calc.convertToRMB(amount: 100_000_001) == "壹亿零壹元整")
+        #expect(calc.convertToRMB(amount: 100_010_000) == "壹亿零壹万元整")
+    }
+
+    @Test("Engine supports lue/nue equivalence, weighted Jianpin, mixed initials, syllable fuzzy, and normal Gengyan learning")
+    func lueNueJianpinSyllableFuzzyAndLexiconHygiene() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let lexicon = UserLexicon(storageURL: tempURL)
+        let engine = PinyinEngine(userLexicon: lexicon)
+
+        // 1. lue/lve and nue/nve equivalence without polluting er/nver words
+        #expect(engine.query(rawInput: "zhanlue").first?.text == "战略")
+        #expect(engine.query(rawInput: "zhanlve").first?.text == "战略")
+        #expect(engine.query(rawInput: "hulue").first?.text == "忽略")
+        #expect(engine.query(rawInput: "celue").first?.text == "策略")
+        #expect(engine.query(rawInput: "gonglue").first?.text == "攻略")
+        #expect(engine.query(rawInput: "nuedai").first?.text == "虐待")
+        #expect(engine.query(rawInput: "nue").first?.text == "虐")
+        #expect(engine.query(rawInput: "fuluer").first?.text == "附录二")
+        #expect(engine.query(rawInput: "nuerhachi").first?.text == "努尔哈赤")
+        #expect(engine.query(rawInput: "banver").first?.text == "把女儿")
+
+        // 2. Corpus-weighted Jianpin & mixed initial+syllable matching
+        for (input, expected) in [
+            ("jsj", "计算机"), ("pyq", "朋友圈"), ("hlw", "互联网"), ("sfz", "身份证"),
+            ("sjk", "数据库"), ("fwq", "服务器"), ("dxs", "大学生"),
+            ("pyquan", "朋友圈"), ("jsji", "计算机"), ("hlwang", "互联网"),
+            ("sfzheng", "身份证"), ("jttianqi", "今天天气")
+        ] {
+            #expect(engine.query(rawInput: input).contains { $0.text == expected }, "Missing \(expected) for \(input)")
+        }
+        #expect(engine.query(rawInput: "yjs").contains { $0.text == "研究生" || $0.text == "研究所" })
+        #expect(engine.query(rawInput: "gwy").contains { $0.text == "公务员" || $0.text == "国务院" })
+
+        // 3. Syllable-level fuzzy expansion handles multi-nasal phrases (e.g. fangjian -> 房间 / 方江)
+        let settings = AetherSettings.shared
+        let oldFuzzy = settings.isFuzzyPinyinEnabled
+        defer { settings.isFuzzyPinyinEnabled = oldFuzzy }
+        settings.isFuzzyPinyinEnabled = true
+        #expect(engine.query(rawInput: "fangan").first?.text == "方案")
+        #expect(engine.query(rawInput: "fangjian").contains { $0.text == "房间" })
+
+        // 4. Normal dictionary phrases with "哽" (e.g. 哽咽) can be learned while garbage compositions remain blocked
+        lexicon.recordCommit(pinyin: "gengye", word: "哽咽")
+        lexicon.recordCommit(pinyin: "gongzuong", word: "工作哽")
+        #expect(lexicon.selectionCount("哽咽", for: "gengye") == 1)
+        #expect(lexicon.selectionCount("工作哽", for: "gongzuong") == 0)
+    }
+
+    @Test("Controller preserves mixed-case raw English, syncs space/caret context, guards Shift+Cmd, shows HUD, and remembers VS Code manual mode")
+    @MainActor
+    func mixedCaseSpaceSyncShiftGuardHUDAndVSCodeMode() async throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        // 1. Mixed-case English preserved on Return & "英" candidate while empty-buffer uppercase still passes through
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        _ = controller.handle(makeKeyEvent(char: "i", keyCode: 34), client: client)
+        _ = controller.handle(makeKeyEvent(char: "P", keyCode: 35, modifiers: [.shift]), client: client)
+        for c in "hone" { _ = controller.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client) }
+        #expect(client.markedText == "iPhone")
+        #expect(CandidatePanelHolder.shared.state.candidates.last?.text == "iPhone")
+        _ = controller.handle(makeKeyEvent(char: "\r", keyCode: 36), client: client)
+        #expect(client.insertedText == "iPhone")
+
+        client.reset()
+        _ = controller.handle(makeKeyEvent(char: "A", keyCode: 0, modifiers: [.shift]), client: client)
+        #expect(client.insertedText == "A")
+
+        // 2. Manual Space and moved caret reset Pangu / decimal context
+        controller.deactivateServer(client)
+        controller.activateServer(client)
+        client.reset()
+        _ = controller.inputText("nihao", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        _ = controller.handle(makeKeyEvent(char: "A", keyCode: 0, modifiers: [.shift]), client: client)
+        #expect(client.insertedText == "你好A")
+
+        client.reset()
+        _ = controller.handle(makeKeyEvent(char: "3", keyCode: 20), client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        _ = controller.handle(makeKeyEvent(char: ".", keyCode: 47), client: client)
+        #expect(client.insertedText == "。")
+
+        client.reset()
+        client.contextText = ""
+        _ = controller.inputText("ni", client: client)
+        _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+        client.contextText = "" // Caret moved to document start
+        _ = controller.handle(makeKeyEvent(char: "A", keyCode: 0, modifiers: [.shift]), client: client)
+        #expect(client.insertedText.hasSuffix("A") && !client.insertedText.hasSuffix(" A"))
+
+        // 3. Shift single tap toggles mode and fires StatusHUD, while Shift+Command combo does not toggle
+        let vsClient = MockTextInputClient()
+        vsClient.mockBundleIdentifier = "com.microsoft.VSCode"
+        vsClient.mockUniqueID = "vscode-session-\(UUID().uuidString)"
+        controller.activateServer(vsClient)
+        // Defaults to English in VS Code -> short Shift tap switches to Chinese
+        let hudBefore = StatusHUDHolder.shared.state.showCount
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift]), client: vsClient)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller.handle(makeFlagsEvent(modifiers: []), client: vsClient)
+        #expect(StatusHUDHolder.shared.state.showCount == hudBefore + 1)
+        #expect(StatusHUDHolder.shared.state.badge == "中")
+
+        // Reactivating VS Code keeps user's manual Chinese choice instead of resetting to English
+        controller.activateServer(client)
+        controller.activateServer(vsClient)
+        #expect(controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: vsClient) == true)
+        controller.resetComposition(client: vsClient)
+
+        // Pressing Shift + Command (e.g. Cmd+Shift+4) and releasing Command first must NOT toggle back to English
+        let hudCountBeforeCombo = StatusHUDHolder.shared.state.showCount
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift]), client: vsClient)
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift, .command]), client: vsClient)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift]), client: vsClient)
+        _ = controller.handle(makeFlagsEvent(modifiers: []), client: vsClient)
+        #expect(StatusHUDHolder.shared.state.showCount == hudCountBeforeCombo)
+        #expect(controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: vsClient) == true)
+        controller.resetComposition(client: vsClient)
     }
 }

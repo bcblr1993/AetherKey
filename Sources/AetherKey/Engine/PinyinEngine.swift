@@ -191,6 +191,7 @@ public enum PinyinLexicon {
         "lun",
         "luo",
         "lv",
+        "lve",
         "ma",
         "mai",
         "man",
@@ -232,6 +233,7 @@ public enum PinyinLexicon {
         "nou",
         "nu",
         "nuan",
+        "nue",
         "nuo",
         "nv",
         "nve",
@@ -414,11 +416,12 @@ public enum PinyinLexicon {
         "zuo",
     ]).union(supplementalCharacters.keys.filter { initialExpansions[$0] == nil })
 
+    private static let sourceRoot: URL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+
     /// Official Unihan readings supplement the existing common-character ranking.
     public static let supplementalCharacters: [String: [String]] = {
-        let sourceRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
         let urls = [
             Bundle.main.url(forResource: "characters", withExtension: "json"),
             Bundle(for: PinyinEngine.self).url(forResource: "characters", withExtension: "json"),
@@ -440,6 +443,18 @@ public enum PinyinLexicon {
             var seen = Set(existing)
             for character in characters where seen.insert(character).inserted { existing.append(character) }
             result[key] = existing
+        }
+        // Keep lue/lve and nue/nve character lists unified regardless of user spelling habit.
+        for (lhs, rhs) in [("lue", "lve"), ("nue", "nve")] {
+            var merged: [String] = []
+            var seen = Set<String>()
+            for char in (result[lhs] ?? []) + (result[rhs] ?? []) where seen.insert(char).inserted {
+                merged.append(char)
+            }
+            if !merged.isEmpty {
+                result[lhs] = merged
+                result[rhs] = merged
+            }
         }
         return result
     }()
@@ -634,6 +649,7 @@ public enum PinyinLexicon {
         "lun": ["论", "轮", "伦", "沦"],
         "luo": ["落", "罗", "络", "洛", "螺", "裸"],
         "lv": ["律", "绿", "率", "旅", "虑", "驴", "屡"],
+        "lve": ["略", "掠"],
         "ma": ["么", "吗", "马", "妈", "麻", "骂", "码"],
         "mai": ["买", "卖", "迈", "麦", "脉"],
         "man": ["满", "慢", "漫", "蛮", "瞒"],
@@ -675,9 +691,10 @@ public enum PinyinLexicon {
         "nou": ["耨"],
         "nu": ["怒", "奴", "努"],
         "nuan": ["暖"],
+        "nue": ["虐", "疟"],
         "nuo": ["诺", "挪", "懦"],
         "nv": ["女"],
-        "nve": ["虐"],
+        "nve": ["虐", "疟"],
         "o": ["哦", "喔"],
         "ou": ["欧", "偶", "殴", "呕", "藕"],
         "pa": ["怕", "爬", "趴", "帕"],
@@ -1082,7 +1099,17 @@ public enum PinyinLexicon {
         "woshenme": ["我什么"],
         "baozheng": ["保证"],
         "xingneng": ["性能"],
-        "shijian": ["时间", "事件", "实践"]
+        "shijian": ["时间", "事件", "实践"],
+        "pengyouquan": ["朋友圈"],
+        "erweima": ["二维码"],
+        "xiaohongshu": ["小红书"],
+        "damoxing": ["大模型"],
+        "duanshipin": ["短视频"],
+        "xiaochengxu": ["小程序"],
+        "zhinengti": ["智能体"],
+        "shujuku": ["数据库"],
+        "fuwuqi": ["服务器"],
+        "ruanjiangongcheng": ["软件工程"]
     ]
 
     /// High-frequency single character preferences when composing multi-syllable sentences
@@ -1308,14 +1335,37 @@ public enum PinyinLexicon {
         "cs": ["测试", "城市", "参数", "次数", "尝试"],
         "ytbl": ["液态玻璃"],
         "pg": ["苹果", "评估"],
-        "pgdn": ["苹果电脑"]
+        "pgdn": ["苹果电脑"],
+        "jsj": ["计算机"],
+        "pyq": ["朋友圈"],
+        "hlw": ["互联网"],
+        "sfz": ["身份证"],
+        "xhs": ["小红书", "新华社", "西红柿"],
+        "yjs": ["研究生", "研究所"],
+        "dxs": ["大学生"],
+        "ewm": ["二维码"],
+        "dmx": ["大模型"],
+        "rjgc": ["软件工程"],
+        "sjk": ["数据库"],
+        "fwq": ["服务器"],
+        "xcx": ["小程序"],
+        "dsp": ["短视频"],
+        "jttq": ["今天天气"]
     ]
+
+    struct WeightedAbbreviationEntry: Sendable {
+        let word: String
+        let syllables: [String]
+    }
+
+    static let weightedAbbreviationEntries: [String: [WeightedAbbreviationEntry]] = loadWeightedAbbreviationEntries()
+    static let weightedAbbreviations: [String: [String]] = weightedAbbreviationEntries.mapValues { $0.map(\.word) }
 
     private static func loadLexicon() -> [String: [String]] {
         let possibleUrls: [URL?] = [
             Bundle.main.url(forResource: "lexicon", withExtension: "json"),
             Bundle(for: PinyinEngine.self).url(forResource: "lexicon", withExtension: "json"),
-            URL(fileURLWithPath: "/Users/chenxu/IdeaProjects/AetherKey/Resources/lexicon.json")
+            sourceRoot.appendingPathComponent("Resources/lexicon.json")
         ]
         
         var loaded: [String: [String]] = [:]
@@ -1341,7 +1391,110 @@ public enum PinyinLexicon {
                 }
             }
         }
+
+        // Normalize lve/nve phrase keys to lue/nue as well, avoiding lver/nver ("女儿"/"驴儿") collisions.
+        for (key, words) in loaded where (key.contains("lve") && !key.contains("lver")) || (key.contains("nve") && !key.contains("nver")) {
+            let alias = key
+                .replacingOccurrences(of: "lve", with: "lue")
+                .replacingOccurrences(of: "nve", with: "nue")
+            guard alias != key else { continue }
+            var existing = loaded[alias] ?? []
+            var seen = Set(existing)
+            for word in words where seen.insert(word).inserted {
+                existing.append(word)
+            }
+            loaded[alias] = existing
+        }
+
         return loaded
+    }
+
+    private static func loadWeightedAbbreviationEntries() -> [String: [WeightedAbbreviationEntry]] {
+        let dictUrls: [URL?] = [
+            Bundle.main.url(forResource: "wubi86.dict", withExtension: "yaml", subdirectory: "Wubi86"),
+            Bundle(for: PinyinEngine.self).url(forResource: "wubi86.dict", withExtension: "yaml", subdirectory: "Wubi86"),
+            sourceRoot.appendingPathComponent("Resources/Wubi86/wubi86.dict.yaml")
+        ]
+        var weights: [String: UInt64] = [:]
+        if let url = dictUrls.compactMap({ $0 }).first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+           let source = try? String(contentsOf: url, encoding: .utf8) {
+            var inTable = false
+            for line in source.split(separator: "\n") {
+                if line == "..." { inTable = true; continue }
+                guard inTable, !line.hasPrefix("#") else { continue }
+                let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+                guard fields.count >= 3 else { continue }
+                let word = fields[0]
+                guard (2...5).contains(word.count), let weight = UInt64(fields[2]), weight > 0 else { continue }
+                let text = String(word)
+                if weight > (weights[text] ?? 0) {
+                    weights[text] = weight
+                }
+            }
+        }
+
+        let validSyllables = allSyllables.union(["lue", "nue", "lve", "nve"])
+        func splitSyllables(_ rawKey: String, targetCount: Int) -> [String]? {
+            if rawKey.contains("'") {
+                let parts = rawKey.split(separator: "'").map(String.init)
+                return parts.count == targetCount && parts.allSatisfy({ validSyllables.contains($0) }) ? parts : nil
+            }
+            let chars = Array(rawKey)
+            let n = chars.count
+            guard n >= targetCount else { return nil }
+            func dfs(_ index: Int, _ remaining: Int) -> [String]? {
+                if remaining == 1 {
+                    let tail = String(chars[index..<n])
+                    return validSyllables.contains(tail) ? [tail] : nil
+                }
+                let maxLen = min(6, (n - index) - (remaining - 1))
+                guard maxLen >= 1 else { return nil }
+                for len in stride(from: maxLen, through: 1, by: -1) {
+                    let sub = String(chars[index..<(index + len)])
+                    if validSyllables.contains(sub), let rest = dfs(index + len, remaining - 1) {
+                        return [sub] + rest
+                    }
+                }
+                return nil
+            }
+            return dfs(0, targetCount)
+        }
+
+        var items: [(weight: UInt64, rankPenalty: Int, key: String, word: String)] = []
+        items.reserveCapacity(65_000)
+        for (key, words) in commonPhrases {
+            let coreWords = builtinCorePhrases[key]
+            let placeWords = builtinPlacePhrases[key]
+            for (idx, word) in words.enumerated() where (2...5).contains(word.count) {
+                var weight = weights[word] ?? 0
+                if coreWords?.contains(word) == true {
+                    weight = max(weight, 50_000_000)
+                } else if placeWords?.contains(word) == true {
+                    weight = max(weight, 10_000_000)
+                }
+                if weight > 0 {
+                    items.append((weight, idx, key, word))
+                }
+            }
+        }
+        items.sort { lhs, rhs in
+            if lhs.weight != rhs.weight { return lhs.weight > rhs.weight }
+            if lhs.rankPenalty != rhs.rankPenalty { return lhs.rankPenalty < rhs.rankPenalty }
+            return lhs.word < rhs.word
+        }
+
+        var result: [String: [WeightedAbbreviationEntry]] = [:]
+        var seenPerAcronym: [String: Set<String>] = [:]
+        for item in items {
+            guard let syllables = splitSyllables(item.key, targetCount: item.word.count) else { continue }
+            let acronym = syllables.map { String($0.prefix(1)) }.joined()
+            if (result[acronym]?.count ?? 0) >= 12 { continue }
+            var seen = seenPerAcronym[acronym] ?? []
+            guard seen.insert(item.word).inserted else { continue }
+            seenPerAcronym[acronym] = seen
+            result[acronym, default: []].append(WeightedAbbreviationEntry(word: item.word, syllables: syllables))
+        }
+        return result
     }
 }
 
@@ -1374,6 +1527,8 @@ enum PinyinContext {
             values.sorted { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 < $1.1 }.map(\.0)
         }
     }()
+
+    static func characterReadings(_ char: Character) -> [String] { readings[char] ?? [] }
 
     static func preload() { _ = readings.count }
 
@@ -1430,6 +1585,7 @@ public final class PinyinEngine: Sendable {
         _ = PinyinLexicon.syllablesChars.count
         _ = userLexicon.learnedEntryCount
         PinyinContext.preload()
+        _ = PinyinLexicon.weightedAbbreviationEntries.count
     }
     
     /// Dynamic programming based maximal syllable segmenter (compatibility API).
@@ -1590,12 +1746,24 @@ public final class PinyinEngine: Sendable {
             initialVariants.append("sh" + s.dropFirst(1))
         }
         
-        // Final nasal fuzzy: an <-> ang, en <-> eng, in <-> ing
+        // Final nasal fuzzy: ian <-> iang, uan <-> uang, an <-> ang, en <-> eng, in <-> ing
         for v in initialVariants {
             if v != s && PinyinLexicon.allSyllables.contains(v) {
                 variants.append(v)
             }
-            if v.hasSuffix("ang") {
+            if v.hasSuffix("iang") {
+                let alt = String(v.dropLast(1))
+                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+            } else if v.hasSuffix("ian") {
+                let alt = v + "g"
+                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+            } else if v.hasSuffix("uang") {
+                let alt = String(v.dropLast(1))
+                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+            } else if v.hasSuffix("uan") {
+                let alt = v + "g"
+                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+            } else if v.hasSuffix("ang") {
                 let alt = String(v.dropLast(1))
                 if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
             } else if v.hasSuffix("an") {
@@ -1616,6 +1784,29 @@ public final class PinyinEngine: Sendable {
             }
         }
         return variants
+    }
+
+    private static func normalizeUe(_ syllable: String) -> String {
+        syllable.replacingOccurrences(of: "lve", with: "lue").replacingOccurrences(of: "nve", with: "nue")
+    }
+
+    private static func syllable(_ syllable: String, matches token: SyllableToken) -> Bool {
+        let normSyl = normalizeUe(syllable)
+        let normTok = normalizeUe(token.text)
+        return token.isComplete ? (normSyl == normTok) : normSyl.hasPrefix(normTok)
+    }
+
+    private static func syllables(_ entrySyllables: [String], match tokens: [SyllableToken]) -> Bool {
+        guard entrySyllables.count == tokens.count else { return false }
+        return zip(entrySyllables, tokens).allSatisfy { syllable($0, matches: $1) }
+    }
+
+    private static func wordMatchesMixedTokens(_ word: String, tokens: [SyllableToken]) -> Bool {
+        let chars = Array(word)
+        guard chars.count == tokens.count else { return false }
+        return zip(chars, tokens).allSatisfy { char, token in
+            PinyinContext.characterReadings(char).contains { syllable($0, matches: token) }
+        }
     }
     
     private static let rareStandaloneSyllables: Set<String> = [
@@ -1904,6 +2095,43 @@ public final class PinyinEngine: Sendable {
                     addCandidate(word: composed)
                 }
             }
+
+            // 4b-jianpin. Weighted corpus Jianpin and mixed initial+syllable matching (e.g. "jsj", "pyquan", "jsji", "hlwang")
+            if !matchedTypoCorrection, tokens.count >= 2, tokens.count <= 5 {
+                let isPureInitialInput = stripped.count >= 2 && stripped.count <= 5
+                    && tokens.allSatisfy { !$0.isComplete || $0.text.count == 1 }
+                let addMixedMatches = {
+                    guard tokens.contains(where: { !$0.isComplete }) else { return }
+                    let acronym = tokens.map { String($0.text.prefix(1)) }.joined()
+                    var mixedSeen = Set<String>()
+                    if let entries = PinyinLexicon.weightedAbbreviationEntries[acronym] {
+                        for entry in entries where entry.syllables.count == tokens.count && Self.syllables(entry.syllables, match: tokens) {
+                            if mixedSeen.insert(entry.word).inserted {
+                                addCandidate(word: entry.word)
+                            }
+                        }
+                    }
+                    if let curated = PinyinLexicon.commonAbbreviations[acronym] {
+                        for word in curated where word.count == tokens.count && !mixedSeen.contains(word) {
+                            if Self.wordMatchesMixedTokens(word, tokens: tokens) {
+                                mixedSeen.insert(word)
+                                addCandidate(word: word)
+                            }
+                        }
+                    }
+                }
+                if tokens.count < stripped.count {
+                    addMixedMatches()
+                    if isPureInitialInput, let words = PinyinLexicon.weightedAbbreviations[stripped] {
+                        for word in words { addCandidate(word: word) }
+                    }
+                } else {
+                    if isPureInitialInput, let words = PinyinLexicon.weightedAbbreviations[stripped] {
+                        for word in words { addCandidate(word: word) }
+                    }
+                    addMixedMatches()
+                }
+            }
             
             // 4c. Single token (either complete syllable like "zhong" or initial/prefix like "n", "zh", "zho")
             if tokens.count == 1 {
@@ -1997,7 +2225,7 @@ public final class PinyinEngine: Sendable {
             for character in characters { addCandidate(word: character) }
         }
 
-        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (an<->ang, en<->eng, in<->ing, agn/egn/ign/ogn->ang/eng/ing/ong, mg->ng, uen->un, iou->iu, uei->ui)
+        // 3. Fuzzy Pinyin & Sogou-style Typo Auto-Correction (syllable-level fuzzy expansion + typo normalization)
         if AetherSettings.shared.isFuzzyPinyinEnabled {
             var fuzzyKeys: [String] = []
             for (typo, corr) in [("agn", "ang"), ("egn", "eng"), ("ign", "ing"), ("ogn", "ong"), ("mg", "ng"), ("uen", "un"), ("iou", "iu"), ("uei", "ui")] {
@@ -2005,23 +2233,36 @@ public final class PinyinEngine: Sendable {
                     fuzzyKeys.append(stripped.replacingOccurrences(of: typo, with: corr))
                 }
             }
-            if stripped.contains("an") && !stripped.contains("ang") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
-            } else if stripped.contains("ang") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
-            }
-            if stripped.contains("en") && !stripped.contains("eng") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
-            } else if stripped.contains("eng") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
-            }
-            if stripped.contains("in") && !stripped.contains("ing") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
-            } else if stripped.contains("ing") {
-                fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
+            if tokens.count >= 2 && tokens.count <= 4 && tokens.allSatisfy(\.isComplete) {
+                let joinedTokens = tokens.map(\.text).joined()
+                var combos: [String] = [""]
+                for tok in tokens {
+                    let alts = [tok.text] + Array(fuzzySyllableVariants(tok.text).prefix(2))
+                    combos = Array(combos.flatMap { prefix in alts.map { prefix + $0 } }.prefix(16))
+                }
+                for key in combos where key != joinedTokens {
+                    fuzzyKeys.append(key)
+                }
+            } else {
+                if stripped.contains("an") && !stripped.contains("ang") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
+                } else if stripped.contains("ang") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
+                }
+                if stripped.contains("en") && !stripped.contains("eng") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
+                } else if stripped.contains("eng") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
+                }
+                if stripped.contains("in") && !stripped.contains("ing") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
+                } else if stripped.contains("ing") {
+                    fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
+                }
             }
 
-            for fKey in fuzzyKeys {
+            var seenFuzzyKeys = Set<String>()
+            for fKey in fuzzyKeys where seenFuzzyKeys.insert(fKey).inserted {
                 if let corePhrases = PinyinLexicon.builtinCorePhrases[fKey] {
                     for word in corePhrases {
                         addCandidate(word: word)

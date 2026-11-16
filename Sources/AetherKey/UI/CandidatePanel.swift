@@ -51,34 +51,49 @@ public struct CandidatePanelRootView: View {
     }
 }
 
-/// IMK hosts may return denormal placeholder rectangles instead of an actual caret.
+/// IMK hosts may return denormal placeholder rectangles or (0, 0) placeholders instead of an actual caret.
 enum CandidateCaretGeometry {
     static func isUsable(_ rect: NSRect) -> Bool {
         rect.origin.x.isFinite && rect.origin.y.isFinite
             && rect.width.isFinite && rect.height.isFinite
+            && !(rect.origin.x == 0 && rect.origin.y == 0)
             && abs(rect.origin.x) < 100_000 && abs(rect.origin.y) < 100_000
             && rect.width >= 0 && rect.width < 10_000
             && rect.height >= 1 && rect.height <= 512
     }
+
+    static func effectiveWindowLevel(for clientWindowLevel: CGWindowLevel?) -> NSWindow.Level {
+        let baseLevel = NSWindow.Level.popUpMenu.rawValue
+        guard let clientWindowLevel, Int(clientWindowLevel) >= baseLevel else {
+            return .popUpMenu
+        }
+        let maxLevel = Int(CGWindowLevelForKey(.maximumWindow)) - 1
+        return NSWindow.Level(rawValue: min(maxLevel, Int(clientWindowLevel) + 1))
+    }
 }
 
-/// Follow the insertion caret while retaining the chosen side on the same line.
+/// Anchor to the composition start on the current line; only re-anchor on line wraps or screen changes.
 struct CandidatePanelPlacement {
     private(set) var anchor: NSRect?
     private(set) var isAbove: Bool?
 
+    mutating func reset() {
+        anchor = nil
+        isAbove = nil
+    }
+
     mutating func frame(caret: NSRect, size: NSSize, screen: NSRect) -> NSRect {
-        // Never lock coordinates: every valid host caret update moves the popup.
-        // Keep the chosen side on the same line, rather than locking its coordinates.
         if let previous = anchor {
-            if abs(caret.minY - previous.minY) >= max(12, previous.height * 0.6) {
+            let lineChanged = abs(caret.minY - previous.minY) >= max(12, previous.height * 0.6)
+            let screenChanged = !screen.insetBy(dx: -32, dy: -32).contains(previous.origin)
+            if lineChanged || screenChanged {
+                anchor = caret
                 isAbove = nil
             }
-            anchor = caret
         } else {
             anchor = caret
         }
-        let caret = anchor ?? caret
+        let anchorCaret = anchor ?? caret
         let margin: CGFloat = 8
         let gap: CGFloat = 7
         let width = min(size.width, max(1, screen.width - margin * 2))
@@ -86,13 +101,13 @@ struct CandidatePanelPlacement {
         if isAbove == nil {
             // Reserve room for two rows at the start, avoiding a side flip on expansion.
             let reservedHeight = max(height, 119)
-            let spaceBelow = caret.minY - screen.minY - gap - margin
-            let spaceAbove = screen.maxY - caret.maxY - gap - margin
+            let spaceBelow = anchorCaret.minY - screen.minY - gap - margin
+            let spaceAbove = screen.maxY - anchorCaret.maxY - gap - margin
             isAbove = spaceBelow < reservedHeight && spaceAbove > spaceBelow
         }
-        let y = isAbove == true ? caret.maxY + gap : caret.minY - height - gap
+        let y = isAbove == true ? anchorCaret.maxY + gap : anchorCaret.minY - height - gap
         return NSRect(
-            x: min(max(caret.minX, screen.minX + margin), screen.maxX - width - margin),
+            x: min(max(anchorCaret.minX, screen.minX + margin), screen.maxX - width - margin),
             y: min(max(y, screen.minY + margin), screen.maxY - height - margin),
             width: width, height: height
         )
@@ -104,6 +119,8 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
     public let state = CandidateState()
     private var hostingView: NSHostingView<CandidatePanelRootView>!
     private var placement = CandidatePanelPlacement()
+    private var sessionMinWidth: CGFloat = 0
+    private var lastMeasuredViewMode: CandidateViewMode? = nil
     private var presentationGeneration = 0
     private var fadeTimer: DispatchSourceTimer?
     private var fadeCompletion: (() -> Void)?
@@ -145,18 +162,55 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
         self.contentView = hostingView
     }
 
+    static func targetScreen(for caretRect: NSRect) -> NSScreen? {
+        let probe = NSRect(
+            x: caretRect.origin.x,
+            y: caretRect.origin.y,
+            width: max(1, caretRect.width),
+            height: max(1, caretRect.height)
+        )
+        if let containing = NSScreen.screens.first(where: { $0.frame.insetBy(dx: -1, dy: -1).intersects(probe) }) {
+            return containing
+        }
+        if !NSScreen.screens.isEmpty {
+            return NSScreen.screens.min(by: { lhs, rhs in
+                squaredDistance(from: caretRect.origin, to: lhs.frame) < squaredDistance(from: caretRect.origin, to: rhs.frame)
+            })
+        }
+        return NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private static func squaredDistance(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        let dx = point.x < rect.minX ? rect.minX - point.x : (point.x > rect.maxX ? point.x - rect.maxX : 0)
+        let dy = point.y < rect.minY ? rect.minY - point.y : (point.y > rect.maxY ? point.y - rect.maxY : 0)
+        return dx * dx + dy * dy
+    }
+
+    /// Resets the locked line anchor and width floor (e.g. after partial prefix commit).
+    public func resetAnchor() {
+        placement.reset()
+        sessionMinWidth = 0
+        lastMeasuredViewMode = nil
+    }
+
     /// Measure the mounted content synchronously, then place it without a window resize animation.
     public func updatePosition(caretRect: NSRect) {
-        let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(caretRect.origin) })
-            ?? NSScreen.main ?? NSScreen.screens.first
+        let targetScreen = Self.targetScreen(for: caretRect)
         let screen = targetScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
-        // Fit the actual candidate content; position still comes from the accepted caret path.
-        let width = CandidatePanelMetrics.contentWidth(
+        if lastMeasuredViewMode != state.viewMode {
+            sessionMinWidth = 0
+            lastMeasuredViewMode = state.viewMode
+        }
+        let maximum = max(1, min(640, screen.width - 26))
+        // Fit the actual candidate content, keeping width monotonic within the same composition session & view mode.
+        let measuredWidth = CandidatePanelMetrics.contentWidth(
             candidates: state.candidates, viewMode: state.viewMode,
             pinyin: state.displayPinyin.isEmpty ? state.inputString : state.displayPinyin,
             mode: state.mode, currentPage: state.currentPage, totalPages: state.totalPages,
-            maximum: max(1, min(640, screen.width - 26))
+            maximum: maximum
         )
+        let width = min(maximum, max(sessionMinWidth, measuredWidth))
+        sessionMinWidth = width
         if state.viewportWidth != width { state.viewportWidth = width }
         hostingView.layoutSubtreeIfNeeded()
         let size = NSSize(width: width + CandidatePanelMetrics.outerPadding * 2,
@@ -170,7 +224,10 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
     }
 
     /// Fade only on a new presentation; typing and page changes update in place.
-    public func show(caretRect: NSRect) {
+    public func show(caretRect: NSRect, clientWindowLevel: CGWindowLevel? = nil) {
+        StatusHUDHolder.shared.hideImmediately()
+        let desiredLevel = CandidateCaretGeometry.effectiveWindowLevel(for: clientWindowLevel)
+        if self.level != desiredLevel { self.level = desiredLevel }
         let wasVisible = state.isVisible
         state.isVisible = true
         updatePosition(caretRect: caretRect)
@@ -185,7 +242,7 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
     public func dismiss() {
         guard state.isVisible else { return }
         state.isVisible = false
-        placement = CandidatePanelPlacement()
+        resetAnchor()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         fade(to: 0, duration: reduceMotion ? 0 : 0.08) { [weak self] in
             guard let self, !self.state.isVisible else { return }
@@ -223,6 +280,184 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
                 self.fadeTimer = nil
                 let completion = self.fadeCompletion
                 self.fadeCompletion = nil
+                completion?()
+            }
+        }
+        timer.resume()
+    }
+}
+
+/// Observable state backing the lightweight mode/punctuation switch HUD capsule.
+@MainActor
+public final class StatusHUDState: ObservableObject {
+    @Published public var badge: String = "中"
+    @Published public var title: String = "中文输入"
+    @Published public var isAccent: Bool = true
+    @Published public var showCount: Int = 0
+
+    public init() {}
+}
+
+@MainActor
+public enum StatusHUDHolder {
+    public static let shared = StatusHUDPanel()
+}
+
+struct StatusHUDView: View {
+    @ObservedObject var state: StatusHUDState
+
+    var body: some View {
+        LiquidGlassContainer(cornerRadius: 10) {
+            HStack(spacing: 6) {
+                Text(state.badge)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(state.isAccent ? Color.accentColor : Color.secondary)
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 22, minHeight: 20)
+                    .background(
+                        (state.isAccent ? Color.accentColor : Color.primary).opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                Text(state.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.88))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .fixedSize()
+        }
+        .fixedSize()
+        .transaction { $0.animation = nil }
+    }
+}
+
+/// Non-activating floating status capsule shown briefly beside the caret on mode/punctuation switches.
+public final class StatusHUDPanel: NSPanel, @unchecked Sendable {
+    public let state = StatusHUDState()
+    private var hostingView: NSHostingView<StatusHUDView>!
+    private var generation = 0
+    private var hideWorkItem: DispatchWorkItem?
+    private var fadeTimer: DispatchSourceTimer?
+
+    public init() {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 110, height: 34),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        setupPanel()
+    }
+
+    public override var canBecomeKey: Bool { false }
+    public override var canBecomeMain: Bool { false }
+
+    private func setupPanel() {
+        isFloatingPanel = true
+        level = .popUpMenu
+        ignoresMouseEvents = true
+        isMovableByWindowBackground = false
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        animationBehavior = .none
+        hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+
+        let root = StatusHUDView(state: state)
+        hostingView = NSHostingView(rootView: root)
+        hostingView.wantsLayer = true
+        hostingView.layer?.drawsAsynchronously = true
+        contentView = hostingView
+    }
+
+    public func show(badge: String, title: String, isAccent: Bool = true, anchorRect: NSRect?, clientWindowLevel: CGWindowLevel? = nil) {
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        fadeTimer?.cancel()
+        fadeTimer = nil
+        generation += 1
+        let currentGeneration = generation
+
+        let desiredLevel = CandidateCaretGeometry.effectiveWindowLevel(for: clientWindowLevel)
+        if self.level != desiredLevel { self.level = desiredLevel }
+
+        state.badge = badge
+        state.title = title
+        state.isAccent = isAccent
+        state.showCount += 1
+
+        hostingView.layoutSubtreeIfNeeded()
+        let size = hostingView.fittingSize
+        let mouse = NSEvent.mouseLocation
+        let caret = (anchorRect.flatMap { CandidateCaretGeometry.isUsable($0) ? $0 : nil })
+            ?? NSRect(x: mouse.x, y: mouse.y, width: 0, height: 22)
+        let screen = CandidatePanel.targetScreen(for: caret)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
+        let margin: CGFloat = 8
+        let gap: CGFloat = 7
+        let showAbove = (caret.minY - screen.minY - gap - margin) < size.height
+            && (screen.maxY - caret.maxY - gap - margin) > (caret.minY - screen.minY - gap - margin)
+        let rawY = showAbove ? caret.maxY + gap : caret.minY - size.height - gap
+        let frameRect = NSRect(
+            x: min(max(caret.minX, screen.minX + margin), screen.maxX - size.width - margin),
+            y: min(max(rawY, screen.minY + margin), screen.maxY - size.height - margin),
+            width: size.width,
+            height: size.height
+        )
+        if frame != frameRect { setFrame(frameRect, display: true, animate: false) }
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if !isVisible { alphaValue = reduceMotion ? 1 : 0 }
+        orderFrontRegardless()
+        fade(to: 1, duration: reduceMotion ? 0 : 0.09, generation: currentGeneration)
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == currentGeneration else { return }
+            let dur = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.15
+            self.fade(to: 0, duration: dur, generation: currentGeneration) { [weak self] in
+                guard let self, self.generation == currentGeneration else { return }
+                self.orderOut(nil)
+                self.alphaValue = 1
+            }
+        }
+        hideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
+    }
+
+    public func hideImmediately() {
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        fadeTimer?.cancel()
+        fadeTimer = nil
+        generation += 1
+        if isVisible {
+            orderOut(nil)
+            alphaValue = 1
+        }
+    }
+
+    private func fade(to target: CGFloat, duration: TimeInterval, generation expectedGen: Int, completion: (() -> Void)? = nil) {
+        fadeTimer?.cancel()
+        fadeTimer = nil
+        guard duration > 0 else {
+            alphaValue = target
+            completion?()
+            return
+        }
+        let initialAlpha = alphaValue
+        let start = CACurrentMediaTime()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        fadeTimer = timer
+        timer.schedule(deadline: .now(), repeating: .milliseconds(16))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.generation == expectedGen else { return }
+            let progress = min(1, (CACurrentMediaTime() - start) / duration)
+            let eased = 1 - pow(1 - progress, 3)
+            self.alphaValue = initialAlpha + (target - initialAlpha) * eased
+            if progress >= 1 {
+                self.fadeTimer?.cancel()
+                self.fadeTimer = nil
                 completion?()
             }
         }

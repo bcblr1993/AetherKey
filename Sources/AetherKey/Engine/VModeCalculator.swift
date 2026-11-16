@@ -194,49 +194,63 @@ public final class VModeCalculator: Sendable {
         let digits = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"]
         let radices = ["", "拾", "佰", "仟"]
         let bigRadices = ["", "万", "亿", "兆"]
-        
-        let integerPart = Int64(floor(amount))
-        let fractionPart = Int(round((amount - floor(amount)) * 100))
-        
+
+        let totalCents = Int64((max(0, amount) * 100.0).rounded())
+        let integerPart = totalCents / 100
+        let fractionPart = Int(totalCents % 100)
+
+        func formatSection(_ section: Int) -> String {
+            var secStr = ""
+            var zeroNeeded = false
+            var temp = section
+            for i in 0..<4 {
+                let d = temp % 10
+                if d == 0 {
+                    if !secStr.isEmpty && !zeroNeeded {
+                        zeroNeeded = true
+                    }
+                } else {
+                    if zeroNeeded {
+                        secStr = digits[0] + secStr
+                        zeroNeeded = false
+                    }
+                    secStr = digits[d] + radices[i] + secStr
+                }
+                temp /= 10
+            }
+            return secStr
+        }
+
         var result = ""
-        
         if integerPart == 0 {
             result = "零元"
         } else {
+            var sections: [Int] = []
             var tempInt = integerPart
-            var sectionCount = 0
-            var intStr = ""
-            
             while tempInt > 0 {
-                let section = Int(tempInt % 10000)
-                if section > 0 {
-                    var secStr = ""
-                    var zeroNeeded = false
-                    var tempSec = section
-                    
-                    for i in 0..<4 {
-                        let d = tempSec % 10
-                        if d == 0 {
-                            if !secStr.isEmpty && !zeroNeeded {
-                                zeroNeeded = true
-                            }
-                        } else {
-                            if zeroNeeded {
-                                secStr = digits[0] + secStr
-                                zeroNeeded = false
-                            }
-                            secStr = digits[d] + radices[i] + secStr
-                        }
-                        tempSec /= 10
-                    }
-                    intStr = secStr + bigRadices[sectionCount] + intStr
-                }
-                sectionCount += 1
+                sections.append(Int(tempInt % 10000))
                 tempInt /= 10000
+            }
+            var intStr = ""
+            var zeroPending = false
+            for idx in stride(from: sections.count - 1, through: 0, by: -1) {
+                let sec = sections[idx]
+                if sec == 0 {
+                    if !intStr.isEmpty {
+                        zeroPending = true
+                    }
+                    continue
+                }
+                if !intStr.isEmpty && (zeroPending || sec < 1000) {
+                    intStr += digits[0]
+                }
+                zeroPending = false
+                let unit = idx < bigRadices.count ? bigRadices[idx] : ""
+                intStr += formatSection(sec) + unit
             }
             result = intStr + "元"
         }
-        
+
         let jiao = fractionPart / 10
         let fen = fractionPart % 10
         if jiao == 0 && fen == 0 {

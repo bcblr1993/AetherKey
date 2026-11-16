@@ -8,9 +8,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     private var statusItem: NSStatusItem?
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // Pre-warm the 530k+ lexicon in background for zero first-keystroke latency
+        // Pre-warm the 530k+ lexicon & Wubi table in background for zero first-keystroke latency
         DispatchQueue.global(qos: .userInitiated).async {
             PinyinEngine.shared.preload()
+            _ = WubiEngine.shared.entryCount
         }
         invalidateIntlFileCacheModificationPasteboard()
         LoginItemController.shared.start()

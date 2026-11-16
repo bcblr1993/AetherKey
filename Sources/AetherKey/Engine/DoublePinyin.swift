@@ -88,6 +88,11 @@ public enum DoublePinyin {
         if scheme == .full || scheme == .wubi86 { return raw }
         return tokens(raw, scheme: scheme)?.map(\.reading).joined(separator: "'") ?? raw
     }
+    private static func abbreviationWords(for stripped: String) -> [String] {
+        (PinyinLexicon.commonAbbreviations[stripped] ?? [])
+            + Array((PinyinLexicon.weightedAbbreviations[stripped] ?? []).prefix(6))
+    }
+
     public static func query(_ raw: String, scheme: PinyinScheme, precedingText: String = "") -> [Candidate] {
         if scheme == .wubi86 { return WubiEngine.shared.query(raw) }
         guard scheme != .full else { return PinyinEngine.shared.query(rawInput: raw, precedingText: precedingText) }
@@ -95,10 +100,8 @@ public enum DoublePinyin {
         guard let tokens = tokens(raw, scheme: scheme), !tokens.isEmpty else {
             var fallback: [Candidate] = []
             var seen = Set<String>()
-            if let abbrWords = PinyinLexicon.commonAbbreviations[stripped] {
-                for word in abbrWords where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
-                    fallback.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
-                }
+            for word in abbreviationWords(for: stripped) where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+                fallback.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
             }
             fallback.append(Candidate(text: raw, comment: "英", consumedInputLength: raw.count))
             return fallback
@@ -125,8 +128,8 @@ public enum DoublePinyin {
                                         consumedInputLength: boundary.raw))
             }
         }
-        if stripped.count >= 3, let abbrWords = PinyinLexicon.commonAbbreviations[stripped] {
-            for word in abbrWords where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+        if stripped.count >= 3 {
+            for word in abbreviationWords(for: stripped) where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
                 result.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
             }
         }

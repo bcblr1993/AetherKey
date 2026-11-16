@@ -130,8 +130,11 @@ public final class UserLexicon: @unchecked Sendable {
             return (1...4).contains(code.count) && word.count <= 16
         }
         guard word.count <= 12, key.count <= 36 else { return false }
-        if word.count >= 2 && (word.contains("哽") || word.contains("鞥")) {
-            return false
+        if word.count >= 2 {
+            if word.contains("鞥") { return false }
+            if word.contains("哽") && !(PinyinLexicon.commonPhrases[key]?.contains(word) ?? false) {
+                return false
+            }
         }
         let knownGarbagePairs: Set<String> = [
             "houmina:后米娜", "shijain:时间爱你", "baozhneg:保证呢个",
