@@ -107,7 +107,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码"
             : "\(PinyinLexicon.entryCount.formatted()) 条拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.10") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.11") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -239,6 +239,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         guard let event = event else { return false }
         self.activeClient = sender as AnyObject?
         
+        synchronizeManualMode(client: sender)
+
         // 1. Shift key tap detection for instantaneous Chinese / English toggle
         if event.type == .flagsChanged {
             handleFlagsChanged(event: event, client: sender)
@@ -528,6 +530,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     public override func inputText(_ string: String!, client sender: Any!) -> Bool {
         guard let string = string, !string.isEmpty else { return false }
         self.activeClient = sender as AnyObject?
+        synchronizeManualMode(client: sender)
         
         if inputMode == .english && buffer.isEmpty {
             if let last = string.last, !string.unicodeScalars.allSatisfy(CharacterSet.controlCharacters.contains) {
@@ -753,6 +756,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
     private func toggleInputMode(client: Any?, showHUD: Bool) {
         let targetClient = resolveClient(client)
+        synchronizeManualMode(client: targetClient)
         inputMode = (inputMode == .chinese ? .english : .chinese)
         Self.saveManualMode(inputMode, for: targetClient)
         if !buffer.isEmpty {
@@ -790,12 +794,26 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
     }
 
+    // Hosts can reuse an already-active controller or deliver input without
+    // activateServer. Read the application's latest explicit choice at entry.
+    // Preserve an in-progress composition (including calculator mode).
+    private func synchronizeManualMode(client: Any?) {
+        guard buffer.isEmpty, let mode = Self.savedManualMode(for: client) else { return }
+        inputMode = mode
+    }
+
     private static func clientIdentifier(for client: Any?) -> String? {
         guard let textInput = client as? IMKTextInput else { return nil }
-        if let unique = textInput.uniqueClientIdentifierString(), !unique.isEmpty {
-            return unique
+        // Input sessions can be recreated when a host rebuilds or refocuses its
+        // editor. Keep the user's explicit mode choice for the application,
+        // rather than resetting to Chinese for each new session identifier.
+        if let bundle = textInput.bundleIdentifier(), !bundle.isEmpty {
+            return "app:\(bundle)"
         }
-        return textInput.bundleIdentifier()
+        if let unique = textInput.uniqueClientIdentifierString(), !unique.isEmpty {
+            return "client:\(unique)"
+        }
+        return nil
     }
 
     private static func savedManualMode(for client: Any?) -> InputMode? {

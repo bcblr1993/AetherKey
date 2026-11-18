@@ -960,6 +960,62 @@ struct AetherKeyEngineTests {
 
 @Suite("Composition editing and persistent candidate preferences", .serialized)
 struct CompositionEditingTests {
+    @Test("Manual mode reaches existing and unactivated host controllers")
+    @MainActor
+    func manualModeSynchronizesWithoutActivation() async throws {
+        let client = MockTextInputClient()
+        client.mockBundleIdentifier = "test.idea.\(UUID().uuidString)"
+        let first = AetherInputController(server: nil, delegate: nil, client: client)!
+        let existing = AetherInputController(server: nil, delegate: nil, client: client)!
+        first.activateServer(client)
+        existing.activateServer(client)
+        _ = first.handle(makeFlagsEvent(modifiers: [.shift]), client: client)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = first.handle(makeFlagsEvent(modifiers: []), client: client)
+        #expect(!existing.handle(makeKeyEvent(char: "a", keyCode: 0), client: client))
+        existing.resetComposition(client: client)
+        let fresh = AetherInputController(server: nil, delegate: nil, client: client)!
+        #expect(!fresh.inputText("a", client: client))
+        fresh.resetComposition(client: client)
+        // A stale controller must toggle the shared English choice back to Chinese.
+        _ = fresh.handle(makeFlagsEvent(modifiers: [.shift]), client: client)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = fresh.handle(makeFlagsEvent(modifiers: []), client: client)
+        #expect(first.handle(makeKeyEvent(char: "a", keyCode: 0), client: client))
+        first.resetComposition(client: client)
+    }
+
+    @Test("Manual English survives replacement input sessions and remains isolated by application")
+    @MainActor
+    func manualModeSurvivesReplacementSession() async throws {
+        let appID = "test.gemini.\(UUID().uuidString)"
+        let first = MockTextInputClient()
+        first.mockBundleIdentifier = appID
+        first.mockUniqueID = "first-session"
+        let controller = AetherInputController(server: nil, delegate: nil, client: first)!
+        controller.activateServer(first)
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift]), client: first)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller.handle(makeFlagsEvent(modifiers: []), client: first)
+        #expect(!controller.handle(makeKeyEvent(char: "a", keyCode: 0), client: first))
+        controller.deactivateServer(first)
+
+        let replacement = MockTextInputClient()
+        replacement.mockBundleIdentifier = appID
+        replacement.mockUniqueID = "replacement-session"
+        let next = AetherInputController(server: nil, delegate: nil, client: replacement)!
+        next.activateServer(replacement)
+        #expect(!next.handle(makeKeyEvent(char: "a", keyCode: 0), client: replacement))
+        next.resetComposition(client: replacement)
+
+        let other = MockTextInputClient()
+        other.mockBundleIdentifier = "test.other.\(UUID().uuidString)"
+        other.mockUniqueID = first.mockUniqueID
+        next.activateServer(other)
+        #expect(next.handle(makeKeyEvent(char: "a", keyCode: 0), client: other))
+        next.resetComposition(client: other)
+    }
+
     @Test @MainActor
     func exactSyllablesOutrankAmbiguousAndFuzzyPhrases() {
         let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
