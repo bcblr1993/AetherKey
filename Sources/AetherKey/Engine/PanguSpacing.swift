@@ -7,15 +7,14 @@ public final class PanguSpacing: Sendable {
     
     // CJK Unicode ranges
     // Unified Ideographs: 0x4E00 - 0x9FFF
-    // Extensions A-G, Compatibility: 0x3400 - 0x4DBF, 0x20000 - 0x2A6DF, 0xF900 - 0xFAFF
+    // Extensions A-H, Compatibility, Radicals: 0x3400 - 0x4DBF, 0x20000 - 0x323AF, 0xF900 - 0xFAFF, 0x2E80 - 0x2EFF
     private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
         let v = scalar.value
         return (0x4E00...0x9FFF).contains(v) ||
                (0x3400...0x4DBF).contains(v) ||
-               (0x20000...0x2CEAF).contains(v) ||
+               (0x20000...0x323AF).contains(v) ||
                (0xF900...0xFAFF).contains(v) ||
-               (0x2E80...0x2EFF).contains(v) ||
-               (0x3000...0x303F).contains(v) // CJK Symbols & Punctuation
+               (0x2E80...0x2EFF).contains(v)
     }
     
     private static func isAlphanumeric(_ scalar: Unicode.Scalar) -> Bool {

@@ -35,6 +35,7 @@
 		7CFCC1839B98928CF5864D71 /* UserLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823A8B43F6C36DA5B796A196 /* UserLexicon.swift */; };
 		824F1636426837EEED092F37 /* CandidateRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924929FCE36012B9171D38E5 /* CandidateRanking.swift */; };
 		832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */; };
+		8992DB5429FFC3AEDD0FBF98 /* ChineseScriptConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E94FB22182D641E5225B9DF /* ChineseScriptConverter.swift */; };
 		8E9A406086127F81882360CA /* InstallationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75E36AA1F5EEFEE2CD1C306 /* InstallationManager.swift */; };
 		8F32F8800A6B17512E59B750 /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
 		90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */; };
@@ -57,6 +58,7 @@
 		CA377C10FBDA9ED80D4B2A4D /* PanguSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */; };
 		CC969BE7443C08495FCC7953 /* CandidatePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0270A81FA511D79F5E3B244F /* CandidatePanel.swift */; };
 		D2D0AE14EC2C30A7E83F4B78 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */; };
+		D976566B48B56DB601E89CC5 /* ChineseScriptConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E94FB22182D641E5225B9DF /* ChineseScriptConverter.swift */; };
 		DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		DBD964B6271EA2F930DC360C /* characters-source.json in Resources */ = {isa = PBXBuildFile; fileRef = D531CEAA94BFFFDC9AA58543 /* characters-source.json */; };
 		E01A066695B50E67B7AC4B8F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F7C43BA30D49D429404895E3 /* Sparkle */; };
@@ -90,6 +92,7 @@
 		2E30C835495DC7F2F10C05F1 /* zh_CN.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; name = zh_CN.lproj; path = Resources/zh_CN.lproj; sourceTree = SOURCE_ROOT; };
 		382253CA7A194C82F58A9921 /* ContextDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDetector.swift; sourceTree = "<group>"; };
 		3CA4E047EDE0CFDF20FCB609 /* LiquidGlassVisualView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassVisualView.swift; sourceTree = "<group>"; };
+		3E94FB22182D641E5225B9DF /* ChineseScriptConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChineseScriptConverter.swift; sourceTree = "<group>"; };
 		3F895226685FBA7904EC9634 /* PinyinEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinyinEngine.swift; sourceTree = "<group>"; };
 		44CCE1343ED3762B99399E3F /* AetherSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AetherSettings.swift; sourceTree = "<group>"; };
 		461856C08FBEE64B1CBB509B /* menubar.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = menubar.pdf; sourceTree = "<group>"; };
@@ -154,6 +157,7 @@
 			isa = PBXGroup;
 			children = (
 				924929FCE36012B9171D38E5 /* CandidateRanking.swift */,
+				3E94FB22182D641E5225B9DF /* ChineseScriptConverter.swift */,
 				382253CA7A194C82F58A9921 /* ContextDetector.swift */,
 				7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */,
 				E747FB7796928B423D825813 /* EmojiLexicon.swift */,
@@ -409,6 +413,7 @@
 				CC969BE7443C08495FCC7953 /* CandidatePanel.swift in Sources */,
 				30374388E02CBB37734D5AE1 /* CandidateRanking.swift in Sources */,
 				EB7A9862AE8234452B07398C /* CandidateViewMode.swift in Sources */,
+				D976566B48B56DB601E89CC5 /* ChineseScriptConverter.swift in Sources */,
 				1934558C888E84F3337E18AF /* ContextDetector.swift in Sources */,
 				E21C66FBCE7D0ADCC8F26B21 /* DoublePinyin.swift in Sources */,
 				9F45FCC2759A6CD4C6FC5F19 /* EmojiLexicon.swift in Sources */,
@@ -439,6 +444,7 @@
 				56F6A8AD368B6B7652D23628 /* CandidatePanel.swift in Sources */,
 				824F1636426837EEED092F37 /* CandidateRanking.swift in Sources */,
 				C452783A8736462781CE797E /* CandidateViewMode.swift in Sources */,
+				8992DB5429FFC3AEDD0FBF98 /* ChineseScriptConverter.swift in Sources */,
 				FBCAC0226790DA60C5B6C008 /* ContextDetector.swift in Sources */,
 				90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */,
 				92570465FC57861E02858AA7 /* EmojiLexicon.swift in Sources */,

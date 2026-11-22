@@ -1,21 +1,41 @@
 import Foundation
 
 public enum PinyinScheme: String, CaseIterable, Sendable, Identifiable {
-    case full, flypy, microsoft, wubi86
+    case full, flypy, microsoft, zrm, sogou, wubi86
     public var id: String { rawValue }
     public var title: String {
-        switch self { case .full: "全拼"; case .flypy: "小鹤双拼"; case .microsoft: "微软双拼"; case .wubi86: "五笔 86" }
+        switch self {
+        case .full: "全拼"
+        case .flypy: "小鹤双拼"
+        case .microsoft: "微软双拼"
+        case .zrm: "自然码双拼"
+        case .sogou: "搜狗双拼"
+        case .wubi86: "五笔 86"
+        }
+    }
+    public var isDoublePinyin: Bool {
+        switch self {
+        case .flypy, .microsoft, .zrm, .sogou: return true
+        case .full, .wubi86: return false
+        }
     }
 }
 
 /// Converts two-key syllables to the existing engine's reading while retaining keystroke offsets.
-/// Key assignments checked against the published Flypy and Microsoft layouts; no external engine is used.
+/// Key assignments checked against the published Flypy, Microsoft, ZRM, and Sogou layouts; no external engine is used.
 public enum DoublePinyin {
     public struct Token: Sendable {
         public let readings: [String]
         public var reading: String { readings[0] }
         public let rawEnd: Int
     }
+
+    public struct KeyMapping: Sendable, Equatable {
+        public let key: String
+        public let initial: String?
+        public let finals: [String]
+    }
+
     private static let flypyFinals: [String: String] = [
         "a":"a", "o":"o", "e":"e", "i":"i", "u":"u", "v":"v",
         "ai":"d", "ei":"w", "ao":"c", "ou":"z", "an":"j", "en":"f", "ang":"h", "eng":"g", "er":"r",
@@ -28,10 +48,34 @@ public enum DoublePinyin {
         "ia":"w", "ie":"x", "iao":"c", "iu":"q", "ian":"m", "in":"n", "iang":"d", "ing":";", "iong":"s",
         "ua":"w", "uo":"o", "uai":"y", "ui":"v", "uan":"r", "un":"p", "uang":"d", "ong":"s", "ve":"t", "ue":"t"
     ]
+    private static let zrmFinals: [String: String] = [
+        "a":"a", "o":"o", "e":"e", "i":"i", "u":"u", "v":"v",
+        "ai":"l", "ei":"z", "ao":"k", "ou":"b", "an":"j", "en":"f", "ang":"h", "eng":"g", "er":"r",
+        "ia":"w", "ie":"x", "iao":"c", "iu":"q", "ian":"m", "in":"n", "iang":"d", "ing":"y", "iong":"s",
+        "ua":"w", "uo":"o", "uai":"y", "ui":"v", "uan":"r", "un":"p", "uang":"d", "ong":"s", "ve":"t", "ue":"t"
+    ]
+    private static let sogouFinals: [String: String] = [
+        "a":"a", "o":"o", "e":"e", "i":"i", "u":"u", "v":"y",
+        "ai":"l", "ei":"z", "ao":"k", "ou":"b", "an":"j", "en":"f", "ang":"h", "eng":"g", "er":"r",
+        "ia":"w", "ie":"x", "iao":"c", "iu":"q", "ian":"m", "in":"n", "iang":"d", "ing":";", "iong":"s",
+        "ua":"w", "uo":"o", "uai":"y", "ui":"v", "uan":"r", "un":"p", "uang":"d", "ong":"s", "ve":"t", "ue":"t"
+    ]
+
+    private static func finalsMap(for scheme: PinyinScheme) -> [String: String] {
+        switch scheme {
+        case .flypy: return flypyFinals
+        case .microsoft: return microsoftFinals
+        case .zrm: return zrmFinals
+        case .sogou: return sogouFinals
+        case .full, .wubi86: return [:]
+        }
+    }
+
     public static func codes(for syllable: String, scheme: PinyinScheme) -> [String] {
-        guard scheme != .wubi86 else { return [] }
-        guard scheme != .full else { return [syllable] }
-        let finals = scheme == .flypy ? flypyFinals : microsoftFinals
+        guard scheme.isDoublePinyin else {
+            return scheme == .full ? [syllable] : []
+        }
+        let finals = finalsMap(for: scheme)
         let initials = ["zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w"]
         if let initial = initials.first(where: { syllable.hasPrefix($0) }) {
             let final = String(syllable.dropFirst(initial.count))
@@ -39,19 +83,21 @@ public enum DoublePinyin {
             let first = ["zh":"v", "ch":"i", "sh":"u"][initial] ?? initial
             var result = [first + key]
             if scheme == .microsoft && ["ue", "ve"].contains(final) { result.append(first + "v") }
-            if ["ju", "qu", "xu", "yu"].contains(syllable) { result.append(first + (scheme == .flypy ? "v" : "y")) }
+            if ["ju", "qu", "xu", "yu"].contains(syllable) { result.append(first + (finals["v"] ?? "v")) }
             return result
         }
         guard "aoe".contains(syllable.prefix(1)), let key = finals[syllable] else { return [] }
-        if scheme == .flypy {
+        if scheme == .flypy || scheme == .zrm {
             if syllable.count == 1 { return [syllable + syllable] }
-            if syllable == "ang" { return ["ah"] }; if syllable == "eng" { return ["eg"] }
+            if syllable == "ang" { return ["ah"] }
+            if syllable == "eng" { return ["eg"] }
             return [syllable]
         }
         var result = ["o" + key]
         if syllable.hasPrefix("a") || syllable.hasPrefix("e") { result.append(String(syllable.prefix(1)) + key) }
         return result
     }
+
     private static func makeTable(_ scheme: PinyinScheme) -> [String: [String]] {
         var table: [String: [String]] = [:]
         for syllable in PinyinLexicon.syllablesChars.keys.sorted() {
@@ -61,10 +107,20 @@ public enum DoublePinyin {
     }
     private static let flypyTable = makeTable(.flypy)
     private static let microsoftTable = makeTable(.microsoft)
+    private static let zrmTable = makeTable(.zrm)
+    private static let sogouTable = makeTable(.sogou)
+
     public static func tokens(_ raw: String, scheme: PinyinScheme) -> [Token]? {
-        guard scheme == .flypy || scheme == .microsoft else { return nil }
+        guard scheme.isDoublePinyin else { return nil }
         let chars = Array(raw.lowercased())
-        let table = scheme == .flypy ? flypyTable : microsoftTable
+        let table: [String: [String]]
+        switch scheme {
+        case .flypy: table = flypyTable
+        case .microsoft: table = microsoftTable
+        case .zrm: table = zrmTable
+        case .sogou: table = sogouTable
+        case .full, .wubi86: return nil
+        }
         var result: [Token] = []; var i = 0
         while i < chars.count {
             if chars[i] == "'" { i += 1; continue }
@@ -84,10 +140,57 @@ public enum DoublePinyin {
         }
         return result
     }
+
     public static func reading(_ raw: String, scheme: PinyinScheme) -> String {
-        if scheme == .full || scheme == .wubi86 { return raw }
+        if !scheme.isDoublePinyin { return raw }
         return tokens(raw, scheme: scheme)?.map(\.reading).joined(separator: "'") ?? raw
     }
+
+    public static func keymapRows(for scheme: PinyinScheme) -> [[KeyMapping]] {
+        guard scheme.isDoublePinyin else { return [] }
+        let finals = finalsMap(for: scheme)
+        let canonicalOrder = [
+            "a", "o", "e", "i", "u", "v",
+            "ai", "ei", "ao", "ou", "an", "en", "ang", "eng", "er",
+            "ia", "ie", "iao", "iu", "ian", "in", "iang", "ing", "iong",
+            "ua", "uo", "uai", "ui", "uan", "un", "uang", "ong", "ue", "ve"
+        ]
+        var finalsByKey: [String: [String]] = [:]
+        for final in canonicalOrder {
+            guard let key = finals[final] else { continue }
+            if final == "ve", finals["ue"] == key { continue }
+            finalsByKey[key, default: []].append(final)
+        }
+        if scheme == .microsoft {
+            var vFinals = finalsByKey["v"] ?? []
+            if !vFinals.contains("ve") { vFinals.append("ve") }
+            finalsByKey["v"] = vFinals
+        }
+
+        let initialMap: [String: String] = [
+            "q": "q", "w": "w", "r": "r", "t": "t", "y": "y", "u": "sh", "i": "ch", "p": "p",
+            "s": "s", "d": "d", "f": "f", "g": "g", "h": "h", "j": "j", "k": "k", "l": "l",
+            "z": "z", "x": "x", "c": "c", "v": "zh", "b": "b", "n": "n", "m": "m"
+        ]
+        let hasSemicolon = (scheme == .microsoft || scheme == .sogou)
+        let rows: [[String]] = [
+            ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+            hasSemicolon
+                ? ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
+                : ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+            ["z", "x", "c", "v", "b", "n", "m"]
+        ]
+        return rows.map { row in
+            row.map { k in
+                KeyMapping(
+                    key: k == ";" ? ";" : k.uppercased(),
+                    initial: initialMap[k],
+                    finals: finalsByKey[k] ?? []
+                )
+            }
+        }
+    }
+
     private static func abbreviationWords(for stripped: String) -> [String] {
         (PinyinLexicon.commonAbbreviations[stripped] ?? [])
             + Array((PinyinLexicon.weightedAbbreviations[stripped] ?? []).prefix(6))

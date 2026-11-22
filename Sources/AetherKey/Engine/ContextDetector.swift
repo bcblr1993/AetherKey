@@ -4,7 +4,7 @@ import AppKit
 public final class ContextDetector: Sendable {
     public static let shared = ContextDetector()
     
-    /// Set of known terminal emulator bundle IDs where CLI input favors raw English.
+    /// Set of known terminal emulator and code editor bundle IDs where input favors raw English.
     private let terminalBundleIDs: Set<String> = [
         "com.apple.Terminal",
         "com.googlecode.iterm2",
@@ -14,7 +14,16 @@ public final class ContextDetector: Sendable {
         "com.github.wez.wezterm",
         "dev.warp.Warp-Stable",
         "co.zeit.hyper",
-        "com.microsoft.VSCode" // Often in terminal or code editing
+        "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
+        "com.todesktop.230313mzl4w4u92",
+        "dev.zed.Zed",
+        "com.apple.dt.Xcode",
+        "com.sublimetext.4",
+        "com.exafunction.windsurf",
+        "org.tabby",
+        "com.neovide.neovide",
+        "com.raphaelamorim.rio"
     ]
     
     /// Browser bundle IDs for address bar detection
@@ -27,7 +36,7 @@ public final class ContextDetector: Sendable {
         "org.mozilla.firefox"
     ]
     
-    /// Returns whether the target application is a terminal environment.
+    /// Returns whether the target application is a terminal or code editor environment.
     public func isTerminalApp(bundleIdentifier: String?) -> Bool {
         guard let bundleId = bundleIdentifier else { return false }
         return terminalBundleIDs.contains(bundleId)
@@ -47,5 +56,21 @@ public final class ContextDetector: Sendable {
             }
         }
         return false
+    }
+
+    /// Resolves default input mode: user custom rule > terminal/editor auto-English > Chinese.
+    public func resolvedDefaultMode(for bundleIdentifier: String?, settings: AetherSettings = .shared) -> InputMode {
+        if let bundleId = bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines), !bundleId.isEmpty {
+            if let custom = settings.appDefaultMode(for: bundleId) {
+                switch custom {
+                case .english: return .english
+                case .chinese: return .chinese
+                }
+            }
+            if settings.isAutoEnglishInTerminalEnabled && isTerminalApp(bundleIdentifier: bundleId) {
+                return .english
+            }
+        }
+        return .chinese
     }
 }

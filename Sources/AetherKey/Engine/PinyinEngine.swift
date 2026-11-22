@@ -1358,6 +1358,7 @@ public enum PinyinLexicon {
         let syllables: [String]
     }
 
+    static let corpusWeights: [String: UInt64] = loadCorpusWeights()
     static let weightedAbbreviationEntries: [String: [WeightedAbbreviationEntry]] = loadWeightedAbbreviationEntries()
     static let weightedAbbreviations: [String: [String]] = weightedAbbreviationEntries.mapValues { $0.map(\.word) }
 
@@ -1409,7 +1410,7 @@ public enum PinyinLexicon {
         return loaded
     }
 
-    private static func loadWeightedAbbreviationEntries() -> [String: [WeightedAbbreviationEntry]] {
+    private static func loadCorpusWeights() -> [String: UInt64] {
         let dictUrls: [URL?] = [
             Bundle.main.url(forResource: "wubi86.dict", withExtension: "yaml", subdirectory: "Wubi86"),
             Bundle(for: PinyinEngine.self).url(forResource: "wubi86.dict", withExtension: "yaml", subdirectory: "Wubi86"),
@@ -1432,6 +1433,11 @@ public enum PinyinLexicon {
                 }
             }
         }
+        return weights
+    }
+
+    private static func loadWeightedAbbreviationEntries() -> [String: [WeightedAbbreviationEntry]] {
+        let weights = corpusWeights
 
         let validSyllables = allSyllables.union(["lue", "nue", "lve", "nve"])
         func splitSyllables(_ rawKey: String, targetCount: Int) -> [String]? {
@@ -1728,59 +1734,85 @@ public final class PinyinEngine: Sendable {
     /// Generates fuzzy pinyin variants for a syllable when fuzzy pinyin is enabled.
     private func fuzzySyllableVariants(_ s: String) -> [String] {
         guard AetherSettings.shared.isFuzzyPinyinEnabled else { return [] }
+        let rules = AetherSettings.shared.fuzzyPinyinRules
+        guard !rules.isEmpty else { return [] }
         var variants: [String] = []
-        
-        // Initial consonant fuzzy: z <-> zh, c <-> ch, s <-> sh
+        var seen = Set<String>([s])
+
+        // Initial consonant fuzzy: zh <-> z, ch <-> c, sh <-> s, l <-> n, f <-> h, r <-> l
         var initialVariants: [String] = [s]
-        if s.hasPrefix("zh") {
-            initialVariants.append("z" + s.dropFirst(2))
-        } else if s.hasPrefix("ch") {
-            initialVariants.append("c" + s.dropFirst(2))
-        } else if s.hasPrefix("sh") {
-            initialVariants.append("s" + s.dropFirst(2))
-        } else if s.hasPrefix("z") {
-            initialVariants.append("zh" + s.dropFirst(1))
-        } else if s.hasPrefix("c") {
-            initialVariants.append("ch" + s.dropFirst(1))
-        } else if s.hasPrefix("s") {
-            initialVariants.append("sh" + s.dropFirst(1))
+        if rules.contains(.zhZ) {
+            if s.hasPrefix("zh") {
+                initialVariants.append("z" + s.dropFirst(2))
+            } else if s.hasPrefix("z") {
+                initialVariants.append("zh" + s.dropFirst(1))
+            }
         }
-        
+        if rules.contains(.chC) {
+            if s.hasPrefix("ch") {
+                initialVariants.append("c" + s.dropFirst(2))
+            } else if s.hasPrefix("c") {
+                initialVariants.append("ch" + s.dropFirst(1))
+            }
+        }
+        if rules.contains(.shS) {
+            if s.hasPrefix("sh") {
+                initialVariants.append("s" + s.dropFirst(2))
+            } else if s.hasPrefix("s") {
+                initialVariants.append("sh" + s.dropFirst(1))
+            }
+        }
+        if rules.contains(.lN) {
+            if s.hasPrefix("l") {
+                initialVariants.append("n" + s.dropFirst(1))
+            } else if s.hasPrefix("n") {
+                initialVariants.append("l" + s.dropFirst(1))
+            }
+        }
+        if rules.contains(.fH) {
+            if s.hasPrefix("f") {
+                initialVariants.append("h" + s.dropFirst(1))
+            } else if s.hasPrefix("h") {
+                initialVariants.append("f" + s.dropFirst(1))
+            }
+        }
+        if rules.contains(.rL) {
+            if s.hasPrefix("r") {
+                initialVariants.append("l" + s.dropFirst(1))
+            } else if s.hasPrefix("l") {
+                initialVariants.append("r" + s.dropFirst(1))
+            }
+        }
+
+        func appendIfValid(_ candidate: String) {
+            if PinyinLexicon.allSyllables.contains(candidate), seen.insert(candidate).inserted {
+                variants.append(candidate)
+            }
+        }
+
         // Final nasal fuzzy: ian <-> iang, uan <-> uang, an <-> ang, en <-> eng, in <-> ing
         for v in initialVariants {
-            if v != s && PinyinLexicon.allSyllables.contains(v) {
-                variants.append(v)
-            }
+            appendIfValid(v)
             if v.hasSuffix("iang") {
-                let alt = String(v.dropLast(1))
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.ianIang) { appendIfValid(String(v.dropLast(1))) }
             } else if v.hasSuffix("ian") {
-                let alt = v + "g"
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.ianIang) { appendIfValid(v + "g") }
             } else if v.hasSuffix("uang") {
-                let alt = String(v.dropLast(1))
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.uanUang) { appendIfValid(String(v.dropLast(1))) }
             } else if v.hasSuffix("uan") {
-                let alt = v + "g"
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.uanUang) { appendIfValid(v + "g") }
             } else if v.hasSuffix("ang") {
-                let alt = String(v.dropLast(1))
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.anAng) { appendIfValid(String(v.dropLast(1))) }
             } else if v.hasSuffix("an") {
-                let alt = v + "g"
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.anAng) { appendIfValid(v + "g") }
             } else if v.hasSuffix("eng") {
-                let alt = String(v.dropLast(1))
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.enEng) { appendIfValid(String(v.dropLast(1))) }
             } else if v.hasSuffix("en") {
-                let alt = v + "g"
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.enEng) { appendIfValid(v + "g") }
             } else if v.hasSuffix("ing") {
-                let alt = String(v.dropLast(1))
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.inIng) { appendIfValid(String(v.dropLast(1))) }
             } else if v.hasSuffix("in") {
-                let alt = v + "g"
-                if PinyinLexicon.allSyllables.contains(alt) { variants.append(alt) }
+                if rules.contains(.inIng) { appendIfValid(v + "g") }
             }
         }
         return variants
@@ -1819,7 +1851,7 @@ public final class PinyinEngine: Sendable {
     /// Scores use phrase cohesion, dictionary order and local selections; no network model.
     private func composeSentences(tokens: [SyllableToken]) -> [String] {
         // Never synthesize whole sentences when intermediate tokens are isolated incomplete consonants (typos/mashing).
-        guard tokens.count >= 2, tokens.count <= 12, tokens.dropLast().allSatisfy(\.isComplete) else { return [] }
+        guard tokens.count >= 2, tokens.count <= 24, tokens.dropLast().allSatisfy(\.isComplete) else { return [] }
         struct Path {
             let text: String
             let score: Double
@@ -1847,10 +1879,13 @@ public final class PinyinEngine: Sendable {
                         if let common = PinyinLexicon.sentenceSingleCharMap[key] ?? PinyinLexicon.syllablesChars[key]?.first {
                             words.append(common)
                         }
-                    } else if let core = (PinyinLexicon.builtinCorePhrases[key] ?? PinyinLexicon.builtinPlacePhrases[key])?.first {
-                        // Curated everyday phrases and place names are stronger priors than dictionary variants.
-                        // Explicit user choices can still override them and retain alternatives.
-                        words.append(core)
+                    } else if let core = PinyinLexicon.builtinCorePhrases[key], let first = core.first {
+                        // Curated everyday phrases are stronger priors than dictionary variants.
+                        // Keep top curated alternatives with positive corpus frequency while excluding non-words.
+                        words.append(first)
+                        words += core.dropFirst().prefix(3).filter { (PinyinLexicon.corpusWeights[$0] ?? 0) > 0 }
+                    } else if let places = PinyinLexicon.builtinPlacePhrases[key] {
+                        words += places.prefix(4)
                     } else {
                         words += (PinyinLexicon.commonPhrases[key] ?? []).prefix(6)
                     }
@@ -1908,6 +1943,25 @@ public final class PinyinEngine: Sendable {
         // 1. Common vowel/nasal transpositions & missing-vowel repairs
         let replacements: [(String, String)] = [
             ("shemm", "shenm"),
+            ("zhne", "zhen"),
+            ("shne", "shen"),
+            ("chne", "chen"),
+            ("mne", "men"),
+            ("bne", "ben"),
+            ("pne", "pen"),
+            ("fne", "fen"),
+            ("yuo", "you"),
+            ("jui", "jiu"),
+            ("xui", "xiu"),
+            ("qui", "qiu"),
+            ("lui", "liu"),
+            ("nui", "niu"),
+            ("mui", "miu"),
+            ("hau", "hao"),
+            ("gau", "gao"),
+            ("kau", "kao"),
+            ("shau", "shao"),
+            ("zhau", "zhao"),
             ("ina", "ian"),
             ("ain", "ian"),
             ("neg", "eng"),
@@ -2027,44 +2081,45 @@ public final class PinyinEngine: Sendable {
         
         // 4. Tokenize into syllables / prefixes and run sentence & phrase synthesis
         let tokens = segmentTokens(rawInput: input)
-        if !tokens.isEmpty {
-            let joined = tokens.map(\.text).joined()
-            if let phrases = PinyinLexicon.commonPhrases[joined] {
-                for word in phrases {
-                    addCandidate(word: word)
-                }
+        let joined = tokens.map(\.text).joined()
+        if !joined.isEmpty, let phrases = PinyinLexicon.commonPhrases[joined] {
+            for word in phrases {
+                addCandidate(word: word)
             }
+        }
 
-            // 4-typo. If no exact lexicon phrase or syllable matched (e.g. transposition "houmina", "shijain", "baozhneg", "xinag", "shemme", "gongzuong"),
-            // promote high-confidence typo corrections BEFORE synthesizing broken multi-token fallbacks.
-            var matchedTypoCorrection = false
-            if candidates.isEmpty, !hasExplicitApostrophe {
-                for fixedKey in typoCorrectedKeys(for: stripped) {
-                    let beforeCount = candidates.count
-                    if let corePhrases = PinyinLexicon.builtinCorePhrases[fixedKey] {
-                        for word in corePhrases { addCandidate(word: word) }
-                    }
-                    if let placePhrases = PinyinLexicon.builtinPlacePhrases[fixedKey] {
-                        for word in placePhrases { addCandidate(word: word) }
-                    }
-                    if let phrases = PinyinLexicon.commonPhrases[fixedKey] {
-                        for word in phrases.prefix(6) { addCandidate(word: word) }
-                    }
-                    if PinyinLexicon.initialExpansions[fixedKey] == nil,
-                       let chars = PinyinLexicon.syllablesChars[fixedKey] {
-                        for c in chars.prefix(6) { addCandidate(word: c) }
-                    }
-                    let fixedTokens = segmentTokens(rawInput: fixedKey)
-                    if fixedTokens.count >= 2, fixedTokens.allSatisfy(\.isComplete) {
-                        for composed in composeSentences(tokens: fixedTokens) {
-                            addCandidate(word: composed)
-                        }
-                    }
-                    if candidates.count > beforeCount {
-                        matchedTypoCorrection = true
+        // 4-typo. If no exact lexicon phrase or syllable matched (e.g. transposition "houmina", "shijain", "baozhneg", "xinag", "shemme", "gongzuong", "jui", "hau"),
+        // promote high-confidence typo corrections BEFORE synthesizing broken multi-token fallbacks.
+        var matchedTypoCorrection = false
+        if candidates.isEmpty, !hasExplicitApostrophe {
+            for fixedKey in typoCorrectedKeys(for: stripped) {
+                let beforeCount = candidates.count
+                if let corePhrases = PinyinLexicon.builtinCorePhrases[fixedKey] {
+                    for word in corePhrases { addCandidate(word: word) }
+                }
+                if let placePhrases = PinyinLexicon.builtinPlacePhrases[fixedKey] {
+                    for word in placePhrases { addCandidate(word: word) }
+                }
+                if let phrases = PinyinLexicon.commonPhrases[fixedKey] {
+                    for word in phrases.prefix(6) { addCandidate(word: word) }
+                }
+                if PinyinLexicon.initialExpansions[fixedKey] == nil,
+                   let chars = PinyinLexicon.syllablesChars[fixedKey] {
+                    for c in chars.prefix(6) { addCandidate(word: c) }
+                }
+                let fixedTokens = segmentTokens(rawInput: fixedKey)
+                if fixedTokens.count >= 2, fixedTokens.allSatisfy(\.isComplete) {
+                    for composed in composeSentences(tokens: fixedTokens) {
+                        addCandidate(word: composed)
                     }
                 }
+                if candidates.count > beforeCount {
+                    matchedTypoCorrection = true
+                }
             }
+        }
+
+        if !tokens.isEmpty {
             
             // 4a. If trailing token is an incomplete syllable/initial (e.g. "nih" -> ["ni", "h"], "zhongg" -> ["zhong", "g"]),
             // expand trailing prefix and match core phrases first, then general lexicon phrases!
@@ -2192,13 +2247,16 @@ public final class PinyinEngine: Sendable {
                 }
             }
             
-            // 4d. Partial prefix phrase candidates for multi-syllable input (e.g. "jintiantianqi" -> also offer "今天" with consumedLength = 6)
+            // 4d. Partial prefix phrase candidates for multi-syllable input (e.g. "jintiantianqi" -> also offer "今天" with consumedLength = 7)
             if tokens.count >= 3 {
-                for prefixCount in stride(from: min(3, tokens.count - 1), through: 2, by: -1) {
+                for prefixCount in stride(from: min(5, tokens.count - 1), through: 2, by: -1) {
                     let prefixSlice = tokens[0..<prefixCount]
                     guard prefixSlice.allSatisfy(\.isComplete) else { continue }
                     let prefixKey = prefixSlice.map(\.text).joined()
                     let consumedLen = prefixSlice.last!.rawEndOffset
+                    for w in userLexicon.preferredWords(for: prefixKey).prefix(2) {
+                        addCandidate(word: w, consumedLength: consumedLen)
+                    }
                     if let prefixPhrases = PinyinLexicon.commonPhrases[prefixKey] {
                         for w in prefixPhrases.prefix(2) {
                             addCandidate(word: w, consumedLength: consumedLen)
@@ -2244,20 +2302,43 @@ public final class PinyinEngine: Sendable {
                     fuzzyKeys.append(key)
                 }
             } else {
-                if stripped.contains("an") && !stripped.contains("ang") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
-                } else if stripped.contains("ang") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
+                let rules = AetherSettings.shared.fuzzyPinyinRules
+                if stripped.contains("iang") {
+                    if rules.contains(.ianIang) {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "iang", with: "ian"))
+                    }
+                } else if stripped.contains("ian") {
+                    if rules.contains(.ianIang) {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "ian", with: "iang"))
+                    }
+                } else if stripped.contains("uang") {
+                    if rules.contains(.uanUang) {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "uang", with: "uan"))
+                    }
+                } else if stripped.contains("uan") {
+                    if rules.contains(.uanUang) {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "uan", with: "uang"))
+                    }
+                } else if rules.contains(.anAng) {
+                    if stripped.contains("an") && !stripped.contains("ang") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "an", with: "ang"))
+                    } else if stripped.contains("ang") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "ang", with: "an"))
+                    }
                 }
-                if stripped.contains("en") && !stripped.contains("eng") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
-                } else if stripped.contains("eng") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
+                if rules.contains(.enEng) {
+                    if stripped.contains("en") && !stripped.contains("eng") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "en", with: "eng"))
+                    } else if stripped.contains("eng") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "eng", with: "en"))
+                    }
                 }
-                if stripped.contains("in") && !stripped.contains("ing") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
-                } else if stripped.contains("ing") {
-                    fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
+                if rules.contains(.inIng) {
+                    if stripped.contains("in") && !stripped.contains("ing") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "in", with: "ing"))
+                    } else if stripped.contains("ing") {
+                        fuzzyKeys.append(stripped.replacingOccurrences(of: "ing", with: "in"))
+                    }
                 }
             }
 

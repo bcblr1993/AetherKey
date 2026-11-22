@@ -132,6 +132,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             case .full: action = #selector(menuSelectFull)
             case .flypy: action = #selector(menuSelectFlypy)
             case .microsoft: action = #selector(menuSelectMicrosoft)
+            case .zrm: action = #selector(menuSelectZrm)
+            case .sogou: action = #selector(menuSelectSogou)
             case .wubi86: action = #selector(menuSelectWubi86)
             }
             let item = NSMenuItem(title: "输入方案：\(scheme.title)", action: action, keyEquivalent: "")
@@ -185,6 +187,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     @objc private func menuSelectFull() { selectScheme(.full) }
     @objc private func menuSelectFlypy() { selectScheme(.flypy) }
     @objc private func menuSelectMicrosoft() { selectScheme(.microsoft) }
+    @objc private func menuSelectZrm() { selectScheme(.zrm) }
+    @objc private func menuSelectSogou() { selectScheme(.sogou) }
 
     private func selectScheme(_ scheme: PinyinScheme) {
         // Existing marked text keeps its original layout until committed or cancelled.

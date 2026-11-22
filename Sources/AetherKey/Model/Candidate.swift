@@ -10,6 +10,9 @@ public struct Candidate: Identifiable, Equatable, Sendable {
     public let isEmoji: Bool
     /// Number of raw buffer characters consumed when this candidate is selected (0 = consumes entire buffer).
     public let consumedInputLength: Int
+    public let rawText: String?
+
+    public var canonicalText: String { rawText ?? text }
     
     public init(
         id: UUID = UUID(),
@@ -18,7 +21,8 @@ public struct Candidate: Identifiable, Equatable, Sendable {
         pinyin: String? = nil,
         isVMode: Bool = false,
         isEmoji: Bool = false,
-        consumedInputLength: Int = 0
+        consumedInputLength: Int = 0,
+        rawText: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -27,6 +31,7 @@ public struct Candidate: Identifiable, Equatable, Sendable {
         self.isVMode = isVMode
         self.isEmoji = isEmoji
         self.consumedInputLength = consumedInputLength
+        self.rawText = rawText
     }
 }
 

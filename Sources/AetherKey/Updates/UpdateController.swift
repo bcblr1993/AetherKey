@@ -28,6 +28,7 @@ public final class UpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
         self.controller = controller
         controller.updater.updateCheckInterval = Self.checkInterval
+        canCheckForUpdates = controller.updater.canCheckForUpdates
         automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
         lastCheckedAt = controller.updater.lastUpdateCheckDate
         controller.updater.publisher(for: \.canCheckForUpdates)
@@ -42,6 +43,7 @@ public final class UpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     @objc public func checkForUpdates() {
         start()
+        canCheckForUpdates = controller?.updater.canCheckForUpdates ?? canCheckForUpdates
         guard canCheckForUpdates else { return }
         state = .checking
         NSApp.activate(ignoringOtherApps: true)

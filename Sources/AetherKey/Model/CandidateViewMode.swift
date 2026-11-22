@@ -14,3 +14,17 @@ public enum CandidateViewMode: String, CaseIterable, Sendable {
         }
     }
 }
+
+public enum CandidateLayoutOrientation: String, CaseIterable, Identifiable, Sendable {
+    case horizontal = "horizontal"
+    case vertical = "vertical"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .horizontal: return "横排"
+        case .vertical: return "竖排"
+        }
+    }
+}
