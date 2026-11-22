@@ -2041,3 +2041,886 @@ extension CompositionEditingTests {
         controller.resetComposition(client: vsClient)
     }
 }
+
+extension CompositionEditingTests {
+    private static func digitKeyCode(for digit: Int) -> UInt16 {
+        switch digit {
+        case 1: return 18
+        case 2: return 19
+        case 3: return 20
+        case 4: return 21
+        case 5: return 23
+        case 6: return 22
+        case 7: return 26
+        case 8: return 28
+        case 9: return 25
+        default: return 18
+        }
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Pangu Spacing Fixes & CJK Extensions
+    @Test("Pangu spacing preserves CJK punctuation while spacing CJK extension B-H ideographs")
+    func panguSpacingPunctuationFixAndExtensionIdeographs() {
+        let pangu = PanguSpacing.shared
+
+        #expect(pangu.spacing("《AetherKey》") == "《AetherKey》")
+        #expect(pangu.spacing("你好。Hello") == "你好。Hello")
+        #expect(pangu.spacing("Mac、iPad") == "Mac、iPad")
+        #expect(pangu.spacing("「Swift」") == "「Swift」")
+        #expect(pangu.spacing("【测试】123") == "【测试】123")
+        #expect(pangu.spacing("『Aether』123") == "『Aether』123")
+
+        // Extension B+ / G-H ideographs (0x20000...0x323AF) receive half-width spacing around ASCII
+        #expect(pangu.spacing("𠙶Test") == "𠙶 Test")
+        #expect(pangu.spacing("Test𠙶") == "Test 𠙶")
+        #expect(pangu.spacing("测试𠙶123") == "测试𠙶 123")
+        #expect(pangu.spacing("𰻞Swift") == "𰻞 Swift")
+
+        #expect(pangu.shouldPrependSpace(preceding: "。", committing: "Hello") == false)
+        #expect(pangu.shouldPrependSpace(preceding: "》", committing: "Swift") == false)
+        #expect(pangu.shouldPrependSpace(preceding: "、", committing: "iPad") == false)
+        #expect(pangu.shouldPrependSpace(preceding: "𠙶", committing: "Test") == true)
+        #expect(pangu.formatCommitText(preceding: "T", committing: "𠙶") == " 𠙶")
+        #expect(pangu.formatCommitText(preceding: "」", committing: "Swift") == "Swift")
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: V-Mode Macros, Chinese Numerals, State Reset & Macro Digit Selection
+    @Test("V-Mode calculator supports new macros, Chinese numerals, and boundary integers")
+    func vModeMacrosAndChineseNumerals() {
+        let vCalc = VModeCalculator.shared
+
+        #expect(VModeCalculator.isMacroKeywordMode("vdate"))
+        #expect(VModeCalculator.isMacroKeywordMode("vnow"))
+        #expect(VModeCalculator.isMacroKeywordMode("vuuid"))
+        #expect(!VModeCalculator.isMacroKeywordMode("v"))
+        #expect(!VModeCalculator.isMacroKeywordMode("v1+2"))
+        #expect(!VModeCalculator.isMacroKeywordMode("v123"))
+
+        for macro in ["vnow", "vdt", "vdatetime"] {
+            let items = vCalc.candidates(for: macro)
+            #expect(items.count == 3)
+            #expect(items[0].text.range(of: #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"#, options: .regularExpression) != nil)
+            #expect(items[1].text.contains("年") && items[1].text.contains("月") && items[1].text.contains("日"))
+            #expect(items[2].text.contains("T"))
+        }
+        // Regression guard: vdate continues to match date rather than vdt
+        let vdateItems = vCalc.candidates(for: "vdate")
+        #expect(vdateItems.count == 2)
+        #expect(vdateItems[0].text.contains("年"))
+        #expect(vdateItems[1].text.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil)
+
+        let tsItems = vCalc.candidates(for: "vts")
+        #expect(tsItems.count == 2)
+        let sec = Int64(tsItems[0].text)
+        let ms = Int64(tsItems[1].text)
+        #expect(sec != nil && sec! >= 1_700_000_000)
+        #expect(ms != nil && abs(ms! / 1000 - (sec ?? 0)) <= 1)
+
+        let uuidItems = vCalc.candidates(for: "vuuid")
+        #expect(uuidItems.count == 2)
+        #expect(UUID(uuidString: uuidItems[0].text) != nil && uuidItems[0].text == uuidItems[0].text.lowercased())
+        #expect(UUID(uuidString: uuidItems[1].text) != nil && uuidItems[1].text == uuidItems[1].text.uppercased())
+        #expect(uuidItems[0].text.uppercased() == uuidItems[1].text)
+
+        let arrowTexts = Set(vCalc.candidates(for: "varrow").map(\.text))
+        #expect(arrowTexts.isSuperset(of: ["→", "←", "↔", "⇒"]))
+
+        let mathTexts = Set(vCalc.candidates(for: "vmath").map(\.text))
+        #expect(mathTexts.isSuperset(of: ["×", "÷", "≈", "≠", "≤", "≥"]))
+
+        let greekTexts = Set(vCalc.candidates(for: "vgreek").map(\.text))
+        #expect(greekTexts.isSuperset(of: ["α", "β", "π", "Ω"]))
+
+        let symbolTexts = Set(vCalc.candidates(for: "vfh").map(\.text))
+        #expect(symbolTexts.isSuperset(of: ["✓", "✗", "⌘", "⌥", "⇧", "⌃"]))
+
+        let v123Items = vCalc.candidates(for: "v123")
+        #expect(v123Items.contains { $0.text == "一百二十三" && $0.comment == "中文数字" })
+        #expect(v123Items.contains { $0.text == "壹佰贰拾叁元整" })
+        #expect(vCalc.candidates(for: "v1+2*3").first?.text == "7")
+
+        let boundaries: [(Int64, String)] = [
+            (0, "零"),
+            (10, "十"),
+            (15, "十五"),
+            (105, "一百零五"),
+            (10_010, "一万零一十"),
+            (100_000_001, "一亿零一")
+        ]
+        for (value, expected) in boundaries {
+            #expect(vCalc.convertToChineseNumeral(integer: value) == expected)
+        }
+    }
+
+    @Test("V-Mode resets inputMode on commit or Escape and supports digit selection for macro keywords")
+    @MainActor
+    func vModeStateResetAndMacroDigitSelectionInController() async throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        SmartPunctuation.shared.resetState()
+        defer {
+            settings.resetToDefaults()
+            SmartPunctuation.shared.resetState()
+        }
+
+        // 1. Space commit resets .vMode -> .chinese so punctuation and Shift toggle work immediately
+        let client1 = MockTextInputClient()
+        client1.mockBundleIdentifier = "test.vmode.space.\(UUID().uuidString)"
+        let controller1 = AetherInputController(server: nil, delegate: nil, client: client1)!
+        controller1.activateServer(client1)
+        for c in "v1+2" {
+            #expect(controller1.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client1))
+        }
+        #expect(client1.markedText == "v1+2")
+        #expect(controller1.handle(makeKeyEvent(char: " ", keyCode: 49), client: client1))
+        #expect(client1.insertedText == "3" && client1.markedText.isEmpty)
+
+        #expect(controller1.handle(makeKeyEvent(char: ",", keyCode: 43), client: client1))
+        #expect(controller1.handle(makeKeyEvent(char: ".", keyCode: 47), client: client1))
+        #expect(client1.insertedText == "3，。")
+
+        _ = controller1.handle(makeFlagsEvent(modifiers: [.shift]), client: client1)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller1.handle(makeFlagsEvent(modifiers: []), client: client1)
+        #expect(StatusHUDHolder.shared.state.badge == "EN")
+        #expect(!controller1.handle(makeKeyEvent(char: "a", keyCode: 0), client: client1))
+        controller1.resetComposition(client: client1)
+
+        // 2. Escape cancellation also resets .vMode -> .chinese
+        let client2 = MockTextInputClient()
+        client2.mockBundleIdentifier = "test.vmode.esc.\(UUID().uuidString)"
+        let controller2 = AetherInputController(server: nil, delegate: nil, client: client2)!
+        controller2.activateServer(client2)
+        for c in "v1+2" {
+            #expect(controller2.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client2))
+        }
+        #expect(controller2.handle(makeKeyEvent(char: "\u{1B}", keyCode: 53), client: client2))
+        #expect(client2.markedText.isEmpty && client2.insertedText.isEmpty)
+
+        #expect(controller2.handle(makeKeyEvent(char: ",", keyCode: 43), client: client2))
+        #expect(controller2.handle(makeKeyEvent(char: ".", keyCode: 47), client: client2))
+        #expect(client2.insertedText == "，。")
+
+        _ = controller2.handle(makeFlagsEvent(modifiers: [.shift]), client: client2)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller2.handle(makeFlagsEvent(modifiers: []), client: client2)
+        #expect(StatusHUDHolder.shared.state.badge == "EN")
+        #expect(!controller2.handle(makeKeyEvent(char: "a", keyCode: 0), client: client2))
+        controller2.resetComposition(client: client2)
+
+        // 3. Macro keyword mode selects candidate on digit 2 instead of appending "vdate2",
+        //    while math expression mode keeps appending digits to "v1+2".
+        let client3 = MockTextInputClient()
+        client3.mockBundleIdentifier = "test.vmode.macro.\(UUID().uuidString)"
+        let controller3 = AetherInputController(server: nil, delegate: nil, client: client3)!
+        controller3.activateServer(client3)
+
+        for c in "vdate" {
+            #expect(controller3.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client3))
+        }
+        #expect(client3.markedText == "vdate")
+        #expect(controller3.handle(makeKeyEvent(char: "2", keyCode: 19), client: client3))
+        #expect(client3.markedText.isEmpty)
+        #expect(client3.insertedText != "vdate2")
+        #expect(client3.insertedText.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil)
+
+        client3.reset()
+        #expect(controller3.inputText("vdate2", client: client3))
+        #expect(client3.markedText.isEmpty)
+        #expect(client3.insertedText.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil)
+
+        client3.reset()
+        for c in "v1+2" {
+            #expect(controller3.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client3))
+        }
+        #expect(client3.markedText == "v1+2")
+        #expect(controller3.handle(makeKeyEvent(char: " ", keyCode: 49), client: client3))
+        #expect(client3.insertedText == "3")
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Mixed-Case Raw English Numeric Selection
+    @Test("Mixed-case raw English candidate retains original casing on numeric key selection")
+    @MainActor
+    func mixedCaseEnglishCandidateNumericSelection() throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        defer { controller.resetComposition(client: client) }
+
+        // 1. Type "iPhone" via handle(_:client:), find "英" candidate, and commit via numeric key 1-9
+        _ = controller.handle(makeKeyEvent(char: "i", keyCode: 34), client: client)
+        _ = controller.handle(makeKeyEvent(char: "P", keyCode: 35, modifiers: [.shift]), client: client)
+        for c in "hone" {
+            _ = controller.handle(makeKeyEvent(char: String(c), keyCode: 0), client: client)
+        }
+        #expect(client.markedText == "iPhone")
+
+        let panel = CandidatePanelHolder.shared
+        var foundIndex: Int?
+        for _ in 0..<panel.state.totalPages {
+            if let idx = panel.state.candidates.firstIndex(where: { $0.comment == "英" && $0.text == "iPhone" }) {
+                foundIndex = idx
+                break
+            }
+            _ = controller.handle(makeKeyEvent(char: "=", keyCode: 24), client: client)
+        }
+        let digitIdx = try #require(foundIndex)
+        #expect(digitIdx < 9)
+        #expect(controller.handle(makeKeyEvent(char: String(digitIdx + 1), keyCode: Self.digitKeyCode(for: digitIdx + 1)), client: client))
+        #expect(client.insertedText == "iPhone")
+        #expect(client.markedText.isEmpty)
+
+        // 2. Also verify a mixed-case buffer with preceding Chinese candidates ("niHao") at a non-first slot
+        client.reset()
+        #expect(controller.inputText("niHao", client: client))
+        #expect(client.markedText == "niHao")
+        var mixedFoundIndex: Int?
+        for _ in 0..<panel.state.totalPages {
+            if let idx = panel.state.candidates.firstIndex(where: { $0.comment == "英" && $0.text == "niHao" }) {
+                mixedFoundIndex = idx
+                break
+            }
+            _ = controller.handle(makeKeyEvent(char: "=", keyCode: 24), client: client)
+        }
+        let mixedDigitIdx = try #require(mixedFoundIndex)
+        #expect(mixedDigitIdx < 9)
+        #expect(controller.handle(makeKeyEvent(char: String(mixedDigitIdx + 1), keyCode: Self.digitKeyCode(for: mixedDigitIdx + 1)), client: client))
+        #expect(client.insertedText == "niHao")
+        #expect(client.markedText.isEmpty)
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Simplified <-> Traditional Chinese Conversion
+    @Test("ChineseScriptConverter handles one-to-many overrides and preserves non-Chinese candidates")
+    func chineseScriptConverterPairsAndCandidates() {
+        let converter = ChineseScriptConverter.shared
+        let pairs: [(String, String)] = [
+            ("头发", "頭髮"), ("发现", "發現"), ("皇后", "皇后"), ("后面", "後面"),
+            ("干净", "乾淨"), ("干部", "幹部"), ("饼干", "餅乾"), ("里面", "裡面"),
+            ("公里", "公里"), ("面条", "麵條"), ("手表", "手錶"), ("回复", "回覆"),
+            ("恢复", "恢復"), ("复习", "複習"), ("反复", "反覆"), ("台风", "颱風")
+        ]
+        for (simplified, traditional) in pairs {
+            #expect(converter.toTraditional(simplified) == traditional, "Conversion mismatch for \(simplified)")
+        }
+        #expect(converter.toTraditional("Swift回复123") == "Swift回覆123")
+        #expect(converter.toTraditional("AetherKey") == "AetherKey")
+        #expect(converter.toTraditional("") == "")
+
+        let inputs: [Candidate] = [
+            Candidate(text: "头发", consumedInputLength: 5),
+            Candidate(text: "頭髮", consumedInputLength: 5),
+            Candidate(text: "🌹", isEmoji: true, consumedInputLength: 5),
+            Candidate(text: "toufa", comment: "英", consumedInputLength: 5),
+            Candidate(text: "壹佰元整", isVMode: true)
+        ]
+        #expect(converter.convertCandidates(inputs, toTraditional: false).map(\.text) == inputs.map(\.text))
+
+        let converted = converter.convertCandidates(inputs, toTraditional: true)
+        #expect(converted.map(\.text) == ["頭髮", "🌹", "toufa", "壹佰元整"])
+        #expect(converted.first?.canonicalText == "头发")
+        #expect(converted.first?.rawText == "头发")
+    }
+
+    @Test("Ctrl+Shift+F toggles Traditional mode in place with unified lexicon across Full, Double Pinyin, and Wubi 86")
+    @MainActor
+    func traditionalModeShortcutUnifiedLexiconAndSchemes() throws {
+        let settings = AetherSettings.shared
+        let lexicon = UserLexicon.shared
+        settings.resetToDefaults()
+
+        var commitsToRollback: [(String, String)] = []
+        var pinsToRemove: [(String, String)] = []
+        var forgetsToRemove: [(String, String)] = []
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+
+        defer {
+            controller.resetComposition(client: client)
+            for (reading, word) in pinsToRemove {
+                lexicon.setPinned(word, for: reading, pinned: false)
+            }
+            for (reading, word) in forgetsToRemove {
+                lexicon.unforget(word, for: reading)
+            }
+            for (reading, word) in commitsToRollback {
+                lexicon.rollbackCommit(pinyin: reading, word: word)
+            }
+            settings.resetToDefaults()
+        }
+
+        // 1. Type "toufa", press Ctrl+Shift+F in-place -> pre-edit intact, HUD fires, candidate turns "頭髮"
+        let beforeToufaCount = lexicon.selectionCount("头发", for: "toufa")
+        #expect(controller.inputText("toufa", client: client))
+        #expect(client.markedText == "toufa")
+        let panel = CandidatePanelHolder.shared
+        #expect(panel.state.candidates.first?.text == "头发")
+
+        let hudBefore = StatusHUDHolder.shared.state.showCount
+        #expect(controller.handle(makeKeyEvent(char: "f", keyCode: 3, modifiers: [.control, .shift]), client: client))
+        #expect(settings.isTraditionalChineseEnabled)
+        #expect(client.markedText == "toufa")
+        #expect(client.insertedText.isEmpty)
+        #expect(StatusHUDHolder.shared.state.showCount == hudBefore + 1)
+        #expect(StatusHUDHolder.shared.state.badge == "繁")
+        #expect(panel.state.isTraditional)
+        #expect(panel.state.candidates.first?.text == "頭髮")
+
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "頭髮")
+        #expect(client.markedText.isEmpty)
+        commitsToRollback.append(("toufa", "头发"))
+        #expect(lexicon.selectionCount("头发", for: "toufa") == beforeToufaCount + 1)
+        #expect(lexicon.selectionCount("頭髮", for: "toufa") == 0)
+
+        // 2. Pin with Ctrl+Opt+P & commit in Traditional mode -> canonical Simplified key & word in UserLexicon, works in Simplified too
+        client.reset()
+        #expect(controller.inputText("huifu", client: client))
+        let huifuIdx = try #require(panel.state.candidates.firstIndex { $0.text == "恢復" })
+        for _ in 0..<huifuIdx {
+            _ = controller.handle(makeKeyEvent(char: "", keyCode: 125), client: client)
+        }
+        #expect(controller.handle(makeKeyEvent(char: "p", keyCode: 35, modifiers: [.control, .option]), client: client))
+        pinsToRemove.append(("huifu", "恢复"))
+        #expect(lexicon.isPinned("恢复", for: "huifu"))
+        #expect(!lexicon.isPinned("恢復", for: "huifu"))
+        #expect(panel.state.candidates.first?.text == "恢復")
+
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "恢復")
+        commitsToRollback.append(("huifu", "恢复"))
+        #expect(lexicon.preferredWords(for: "huifu").first == "恢复")
+        #expect(!lexicon.preferredWords(for: "huifu").contains("恢復"))
+        #expect(!lexicon.allPinnedWords().contains { $0.word == "恢復" })
+
+        // Switch back to Simplified via Ctrl+Shift+F -> cross-script pin still ranks "恢复" first
+        #expect(controller.handle(makeKeyEvent(char: "f", keyCode: 3, modifiers: [.control, .shift]), client: client))
+        #expect(!settings.isTraditionalChineseEnabled)
+        #expect(StatusHUDHolder.shared.state.badge == "简")
+        client.reset()
+        #expect(controller.inputText("huifu", client: client))
+        #expect(panel.state.candidates.first?.text == "恢复")
+
+        // Unpin "恢复", switch back to Traditional, and forget "回覆" -> stored canonically as "回复"
+        #expect(controller.handle(makeKeyEvent(char: "u", keyCode: 32, modifiers: [.control, .option]), client: client))
+        #expect(!lexicon.isPinned("恢复", for: "huifu"))
+        #expect(controller.handle(makeKeyEvent(char: "f", keyCode: 3, modifiers: [.control, .shift]), client: client))
+        let replyIdx = try #require(panel.state.candidates.firstIndex { $0.text == "回覆" })
+        for _ in 0..<replyIdx {
+            _ = controller.handle(makeKeyEvent(char: "", keyCode: 125), client: client)
+        }
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 51, modifiers: [.control, .option]), client: client))
+        forgetsToRemove.append(("huifu", "回复"))
+        #expect(lexicon.isForgotten("回复", for: "huifu"))
+        #expect(!lexicon.isForgotten("回覆", for: "huifu"))
+        #expect(!lexicon.allForgottenWords().contains { $0.word == "回覆" })
+        #expect(!panel.state.candidates.contains { $0.text == "回覆" })
+        #expect(controller.handle(makeKeyEvent(char: "f", keyCode: 3, modifiers: [.control, .shift]), client: client))
+        #expect(!panel.state.candidates.contains { $0.text == "回复" })
+        controller.resetComposition(client: client)
+
+        // 3. Double Pinyin (.flypy) & Wubi 86 output Traditional while preserving "英", Emoji, and V-Mode
+        settings.isTraditionalChineseEnabled = true
+        settings.pinyinScheme = .flypy
+        client.reset()
+        #expect(controller.inputText("vsgo", client: client))
+        #expect(panel.state.candidates.first?.text == "中國")
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "中國")
+        commitsToRollback.append(("zhongguo", "中国"))
+
+        settings.pinyinScheme = .wubi86
+        client.reset()
+        #expect(controller.inputText("khlg", client: client))
+        #expect(panel.state.candidates.first?.text == "中國")
+        #expect(panel.state.candidates.contains { $0.comment == "英" && $0.text == "khlg" })
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "中國")
+        commitsToRollback.append(("wubi86:khlg", "中国"))
+
+        settings.pinyinScheme = .full
+        client.reset()
+        #expect(controller.inputText("meigui", client: client))
+        #expect(panel.state.candidates.contains { $0.isEmoji && $0.text == "🌹" })
+        controller.resetComposition(client: client)
+
+        controller.deactivateServer(client)
+        controller.activateServer(client)
+        client.reset()
+        #expect(controller.inputText("v128.5", client: client))
+        #expect(panel.state.candidates.contains { $0.text.contains("壹佰贰拾捌元伍角整") })
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "128.5")
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Granular Fuzzy Pinyin Rules
+    @Test("FuzzyPinyinRules defaults, persistence, reset, and granular engine expansion")
+    @MainActor
+    func fuzzyPinyinRulesAndEngineBehavior() throws {
+        // 1. Isolated UserDefaults persistence & reset
+        let suiteName = "AetherKey.FuzzyRules." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let isolatedSettings = AetherSettings(defaults: defaults)
+        #expect(isolatedSettings.fuzzyPinyinRules == .defaultRules)
+        for expectedOn in [FuzzyPinyinRules.zhZ, .chC, .shS, .anAng, .enEng, .inIng, .ianIang, .uanUang] {
+            #expect(isolatedSettings.fuzzyPinyinRules.contains(expectedOn))
+        }
+        for expectedOff in [FuzzyPinyinRules.lN, .fH, .rL] {
+            #expect(!isolatedSettings.fuzzyPinyinRules.contains(expectedOff))
+        }
+        #expect(FuzzyPinyinRules.ruleMetadata.count == 11)
+
+        isolatedSettings.fuzzyPinyinRules = [.lN, .fH]
+        #expect(AetherSettings(defaults: defaults).fuzzyPinyinRules == [.lN, .fH])
+        isolatedSettings.resetToDefaults()
+        #expect(AetherSettings(defaults: defaults).fuzzyPinyinRules == .defaultRules)
+
+        // 2. Engine fuzzy query behavior driven by AetherSettings.shared.fuzzyPinyinRules
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: tempURL))
+
+        // Default rules: l<->n, f<->h, r<->l are disabled; an<->ang is enabled
+        #expect(!engine.query(rawInput: "lan").contains { $0.text == "南" })
+        #expect(!engine.query(rawInput: "re").contains { $0.text == "乐" })
+        #expect(engine.query(rawInput: "fangan").contains { $0.text == "返港" })
+
+        // Enable .lN -> lan hits "南"
+        settings.fuzzyPinyinRules.insert(.lN)
+        #expect(engine.query(rawInput: "lan").contains { $0.text == "南" })
+
+        // Enable .fH -> single-syllable top-4 fuzzy chars (fu->"护", hu->"服") and multi-syllable words (fuzhao->"护照", hujian->"福建")
+        settings.fuzzyPinyinRules.insert(.fH)
+        #expect(engine.query(rawInput: "fu").contains { $0.text == "护" })
+        #expect(engine.query(rawInput: "hu").contains { $0.text == "服" })
+        #expect(engine.query(rawInput: "fuzhao").contains { $0.text == "护照" })
+        #expect(engine.query(rawInput: "hujian").contains { $0.text == "福建" })
+
+        // Enable .rL -> re hits "乐" and luren hits "如人"
+        settings.fuzzyPinyinRules.insert(.rL)
+        #expect(engine.query(rawInput: "re").contains { $0.text == "乐" })
+        #expect(engine.query(rawInput: "luren").contains { $0.text == "如人" })
+
+        // Disable .anAng -> fangan no longer expands via an<->ang
+        settings.fuzzyPinyinRules.remove(.anAng)
+        #expect(!engine.query(rawInput: "fangan").contains { $0.text == "返港" })
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: ZRM & Sogou Double Pinyin + Keymaps
+    @Test("ZRM and Sogou Double Pinyin round-trip all mapped syllables and expose complete keymaps")
+    @MainActor
+    func zrmAndSogouDoublePinyinAndKeymaps() {
+        for scheme in [PinyinScheme.zrm, .sogou] {
+            var coveredCount = 0
+            for syllable in PinyinLexicon.syllablesChars.keys.sorted() {
+                let codes = DoublePinyin.codes(for: syllable, scheme: scheme)
+                if !codes.isEmpty { coveredCount += 1 }
+                for code in codes {
+                    let readings = DoublePinyin.tokens(code, scheme: scheme)?.first?.readings ?? []
+                    #expect(readings.contains(syllable), "\(scheme): \(syllable) -> \(code) -> \(readings)")
+                }
+            }
+            #expect(coveredCount >= 422)
+        }
+
+        // ZRM specific encodings
+        #expect(DoublePinyin.query("nihk", scheme: .zrm).contains { $0.text == "你好" })
+        #expect(DoublePinyin.query("vsgo", scheme: .zrm).contains { $0.text == "中国" })
+        #expect(DoublePinyin.query("py", scheme: .zrm).contains { $0.text == "平" })
+        #expect(DoublePinyin.query("nv", scheme: .zrm).contains { $0.text == "女" })
+        #expect(DoublePinyin.query("aa", scheme: .zrm).contains { $0.text == "啊" })
+        #expect(DoublePinyin.reading("ah", scheme: .zrm) == "ang")
+        #expect(DoublePinyin.query("ah", scheme: .zrm).contains { $0.text == "昂" })
+
+        // Sogou specific encodings
+        #expect(DoublePinyin.query("nihk", scheme: .sogou).contains { $0.text == "你好" })
+        #expect(DoublePinyin.query("vsgo", scheme: .sogou).contains { $0.text == "中国" })
+        #expect(DoublePinyin.query("p;", scheme: .sogou).contains { $0.text == "平" })
+        #expect(DoublePinyin.query("ny", scheme: .sogou).contains { $0.text == "女" })
+        #expect(DoublePinyin.query("oa", scheme: .sogou).contains { $0.text == "啊" })
+        #expect(DoublePinyin.reading("oh", scheme: .sogou) == "ang")
+        #expect(DoublePinyin.query("oh", scheme: .sogou).contains { $0.text == "昂" })
+
+        // Keymap rows verification
+        let alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(String.init))
+        for scheme in [PinyinScheme.flypy, .microsoft, .zrm, .sogou] {
+            let rows = DoublePinyin.keymapRows(for: scheme)
+            #expect(rows.count == 3)
+            let keys = Set(rows.flatMap { $0 }.map(\.key))
+            #expect(alphabet.isSubset(of: keys))
+            if scheme == .microsoft || scheme == .sogou {
+                #expect(rows[1].map(\.key).contains(";"))
+            } else {
+                #expect(!keys.contains(";"))
+            }
+        }
+        #expect(DoublePinyin.keymapRows(for: .full).isEmpty)
+        #expect(DoublePinyin.keymapRows(for: .wubi86).isEmpty)
+
+        // Sogou controller end-to-end (both handle and inputText) for p; -> 平
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        settings.pinyinScheme = .sogou
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        #expect(controller.handle(makeKeyEvent(char: "p", keyCode: 35), client: client))
+        #expect(controller.handle(makeKeyEvent(char: ";", keyCode: 41), client: client))
+        #expect(client.markedText == "p;")
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "平")
+        UserLexicon.shared.rollbackCommit(pinyin: "ping", word: "平")
+
+        client.reset()
+        #expect(controller.inputText("p;", client: client))
+        #expect(client.markedText == "p;")
+        #expect(controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client))
+        #expect(client.insertedText == "平")
+        UserLexicon.shared.rollbackCommit(pinyin: "ping", word: "平")
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Per-App Auto English/Chinese Rules & Priorities
+    @Test("ContextDetector and AetherSettings support per-app rules while Shift manual toggle retains highest priority")
+    @MainActor
+    func perAppAutoInputModePersistenceAndPrecedence() async throws {
+        let detector = ContextDetector.shared
+        #expect(detector.isTerminalApp(bundleIdentifier: "com.apple.dt.Xcode") == true)
+        #expect(detector.isTerminalApp(bundleIdentifier: "com.todesktop.230313mzl4w4u92") == true)
+        #expect(detector.isTerminalApp(bundleIdentifier: "dev.zed.Zed") == true)
+        #expect(detector.isTerminalApp(bundleIdentifier: "com.jetbrains.intellij") == false)
+
+        // 1. Persistence in isolated UserDefaults
+        let suiteName = "AetherKey.AppModeRules." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let isolated = AetherSettings(defaults: defaults)
+        isolated.setAppDefaultMode(.english, for: "com.jetbrains.intellij")
+        isolated.setAppDefaultMode(.chinese, for: "com.apple.Terminal")
+        let reloaded = AetherSettings(defaults: defaults)
+        #expect(reloaded.appDefaultMode(for: "com.jetbrains.intellij") == .english)
+        #expect(reloaded.appDefaultMode(for: "com.apple.Terminal") == .chinese)
+        #expect(detector.resolvedDefaultMode(for: "com.jetbrains.intellij", settings: reloaded) == .english)
+        #expect(detector.resolvedDefaultMode(for: "com.apple.Terminal", settings: reloaded) == .chinese)
+
+        reloaded.resetToDefaults()
+        #expect(AetherSettings(defaults: defaults).customAppDefaultModes.isEmpty)
+
+        // 2. Controller integration on shared settings
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        settings.setAppDefaultMode(.english, for: "com.jetbrains.intellij")
+        settings.setAppDefaultMode(.chinese, for: "com.apple.Terminal")
+
+        let ideaClient = MockTextInputClient()
+        ideaClient.mockBundleIdentifier = "com.jetbrains.intellij"
+        ideaClient.mockUniqueID = "idea-\(UUID().uuidString)"
+        let controller = AetherInputController(server: nil, delegate: nil, client: ideaClient)!
+        controller.activateServer(ideaClient)
+        #expect(!controller.handle(makeKeyEvent(char: "a", keyCode: 0), client: ideaClient))
+
+        let terminalClient = MockTextInputClient()
+        terminalClient.mockBundleIdentifier = "com.apple.Terminal"
+        terminalClient.mockUniqueID = "terminal-\(UUID().uuidString)"
+        controller.activateServer(terminalClient)
+        #expect(controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: terminalClient))
+        controller.resetComposition(client: terminalClient)
+
+        // 3. Session Shift single-tap manual override takes priority over custom app default rule
+        let customBundle = "test.intellij.manual.\(UUID().uuidString)"
+        settings.setAppDefaultMode(.english, for: customBundle)
+        let customClient = MockTextInputClient()
+        customClient.mockBundleIdentifier = customBundle
+        customClient.mockUniqueID = "custom-\(UUID().uuidString)"
+        controller.activateServer(customClient)
+        #expect(!controller.handle(makeKeyEvent(char: "a", keyCode: 0), client: customClient))
+
+        _ = controller.handle(makeFlagsEvent(modifiers: [.shift]), client: customClient)
+        try await Task.sleep(for: .milliseconds(35))
+        _ = controller.handle(makeFlagsEvent(modifiers: []), client: customClient)
+        #expect(controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: customClient))
+        controller.resetComposition(client: customClient)
+
+        // Switching away and back preserves the manual Chinese choice over the app's default English rule
+        let neutralClient = MockTextInputClient()
+        neutralClient.mockBundleIdentifier = "test.neutral.\(UUID().uuidString)"
+        controller.activateServer(neutralClient)
+        controller.activateServer(customClient)
+        #expect(controller.handle(makeKeyEvent(char: "n", keyCode: 45), client: customClient))
+        controller.resetComposition(client: customClient)
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Vertical Layout, Dynamic Font Size, Traditional Badge & Page Size
+    @Test("Vertical candidate layout, dynamic font sizes, fittingSize parity, and Traditional badge work consistently")
+    @MainActor
+    func verticalLayoutFontSizeFittingSizeAndTraditionalBadge() {
+        let candidates5 = ["你好", "世界", "竖排", "测试", "候选"].map { Candidate(text: $0) }
+        let candidates2 = ["你好", "世界"].map { Candidate(text: $0) }
+
+        // Default 15pt horizontal row height & panel height remain unchanged
+        #expect(CandidatePanelMetrics.rowHeight(for: 15) == 30)
+        #expect(CandidatePanelMetrics.height(for: .paging) == 68.5)
+
+        // Vertical height grows monotonically with candidate count and font size
+        let h2 = CandidatePanelMetrics.height(for: .paging, orientation: .vertical, candidateCount: 2, fontSize: 15)
+        let h5 = CandidatePanelMetrics.height(for: .paging, orientation: .vertical, candidateCount: 5, fontSize: 15)
+        #expect(h5 > h2)
+
+        var previousHeight: CGFloat = 0
+        var previousRowHeight: CGFloat = 0
+        for size: CGFloat in [14, 15, 17, 19] {
+            let rowH = CandidatePanelMetrics.rowHeight(for: size)
+            let measuredW = CandidatePanelMetrics.contentWidth(
+                candidates: candidates5, viewMode: .paging, pinyin: "ni'hao",
+                mode: .chinese, currentPage: 1, totalPages: 2,
+                layoutOrientation: .vertical, fontSize: size
+            )
+            let measuredH = CandidatePanelMetrics.height(
+                for: .paging, orientation: .vertical, candidateCount: candidates5.count, fontSize: size
+            )
+            #expect(rowH > previousRowHeight)
+            #expect(measuredH > previousHeight)
+            previousRowHeight = rowH
+            previousHeight = measuredH
+
+            let view = CandidateListView(
+                inputString: "nihao", displayPinyin: "ni'hao", mode: .chinese, viewMode: .paging,
+                candidates: candidates5, selectedIndex: 0, currentPage: 1, totalPages: 2,
+                isTraditional: true, layoutOrientation: .vertical, fontSize: size
+            )
+            let fitting = NSHostingView(rootView: view).fittingSize
+            #expect(abs(fitting.width - (measuredW + CandidatePanelMetrics.outerPadding * 2)) < 1)
+            #expect(abs(fitting.height - measuredH) < 1)
+        }
+
+        // Local CandidatePanel frame height increases with candidate count and font size in vertical mode
+        let localPanel = CandidatePanel()
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let caret = NSRect(x: screen.midX, y: screen.midY, width: 0, height: 22)
+        localPanel.state.layoutOrientation = .vertical
+        localPanel.state.fontSize = 15
+        localPanel.state.candidates = candidates2
+        localPanel.show(caretRect: caret)
+        let panelH2 = localPanel.frame.height
+
+        localPanel.state.candidates = candidates5
+        localPanel.show(caretRect: caret)
+        let panelH5 = localPanel.frame.height
+        #expect(panelH5 > panelH2)
+
+        var panelFontHeights: [CGFloat] = []
+        for size: CGFloat in [14, 15, 17, 19] {
+            localPanel.state.fontSize = size
+            localPanel.show(caretRect: caret)
+            panelFontHeights.append(localPanel.frame.height)
+        }
+        #expect(panelFontHeights[0] < panelFontHeights[1] && panelFontHeights[1] < panelFontHeights[2] && panelFontHeights[2] < panelFontHeights[3])
+        localPanel.dismiss()
+
+        // Controller integration: Traditional enabled updates CandidatePanelHolder.shared.state.isTraditional and view badge "繁"
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        settings.isTraditionalChineseEnabled = true
+        settings.candidateLayoutOrientation = .vertical
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        #expect(controller.inputText("toufa", client: client))
+        let holder = CandidatePanelHolder.shared
+        #expect(holder.state.isTraditional == true)
+        #expect(holder.state.layoutOrientation == .vertical)
+
+        let renderedListView = CandidateListView(
+            inputString: holder.state.inputString,
+            displayPinyin: holder.state.displayPinyin,
+            mode: holder.state.mode,
+            viewMode: holder.state.viewMode,
+            candidates: holder.state.candidates,
+            selectedIndex: holder.state.selectedIndex,
+            currentPage: holder.state.currentPage,
+            totalPages: holder.state.totalPages,
+            isTraditional: holder.state.isTraditional,
+            layoutOrientation: holder.state.layoutOrientation,
+            fontSize: holder.state.fontSize
+        )
+        let viewTreeDump = String(reflecting: renderedListView.body)
+        #expect(viewTreeDump.contains("繁"))
+        controller.resetComposition(client: client)
+    }
+
+    @Test("Configurable candidatePageSize controls totalPages and digit selection without doubling in vertical scroll mode")
+    @MainActor
+    func candidatePageSizeAndVerticalScrollBehavior() throws {
+        let suiteName = "AetherKey.PageSizeClamping." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let clamped = AetherSettings(defaults: defaults)
+        clamped.candidatePageSize = 3
+        #expect(clamped.candidatePageSize == 5)
+        clamped.candidatePageSize = 12
+        #expect(clamped.candidatePageSize == 9)
+        clamped.candidateFontSize = 10
+        #expect(clamped.candidateFontSize == 13)
+        clamped.candidateFontSize = 30
+        #expect(clamped.candidateFontSize == 22)
+
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        let panel = CandidatePanelHolder.shared
+        defer { controller.resetComposition(client: client) }
+
+        // 1. Page size = 5
+        settings.candidatePageSize = 5
+        #expect(controller.inputText("shi", client: client))
+        #expect(panel.state.candidates.count == 5)
+        let totalPages5 = panel.state.totalPages
+        #expect(controller.handle(makeKeyEvent(char: "=", keyCode: 24), client: client))
+        let page2Fifth = try #require(panel.state.candidates.dropFirst(4).first?.text)
+        #expect(controller.handle(makeKeyEvent(char: "5", keyCode: 23), client: client))
+        #expect(client.insertedText == page2Fifth)
+        UserLexicon.shared.rollbackCommit(pinyin: "shi", word: page2Fifth)
+
+        // 2. Page size = 9
+        client.reset()
+        settings.candidatePageSize = 9
+        #expect(controller.inputText("shi", client: client))
+        #expect(panel.state.candidates.count == 9)
+        #expect(panel.state.totalPages < totalPages5)
+        let page1Ninth = try #require(panel.state.candidates.dropFirst(8).first?.text)
+        #expect(controller.handle(makeKeyEvent(char: "9", keyCode: 25), client: client))
+        #expect(client.insertedText == page1Ninth)
+        UserLexicon.shared.rollbackCommit(pinyin: "shi", word: page1Ninth)
+
+        // 3. Vertical mode + .scroll does NOT double pageSize
+        client.reset()
+        settings.candidatePageSize = 6
+        settings.candidateLayoutOrientation = .vertical
+        settings.defaultViewMode = .scroll
+        #expect(controller.inputText("shi", client: client))
+        #expect(panel.state.viewMode == .scroll)
+        #expect(panel.state.candidates.count == 6)
+        controller.resetComposition(client: client)
+
+        // Contrast with horizontal .scroll which doubles 6 -> 12
+        settings.candidateLayoutOrientation = .horizontal
+        #expect(controller.inputText("shi", client: client))
+        #expect(panel.state.candidates.count == 12)
+        controller.resetComposition(client: client)
+    }
+
+    // MARK: - 1.1.0 Wave 3 Tests: Long Sentences, Secondary Homophones, 5-Syllable Prefix, New Typos, Rollbacks & Updater
+    @Test("Engine composes 16+ syllable sentences, secondary homophones, 5-syllable partial prefixes, and zero-conflict typos")
+    func longSentenceHomophonesFiveSyllablePrefixAndTypos() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: tempURL))
+
+        // 1. 16+ syllable long sentence composition
+        let sentence17 = "jintiantianqizhenhaowomenyiqiquhangzhouxihuwanba"
+        #expect(engine.segmentTokens(rawInput: sentence17).count == 17)
+        let res17 = engine.query(rawInput: sentence17)
+        #expect(res17.first?.text == "今天天气真好我们一起去杭州西湖玩吧")
+        #expect(res17.first?.text.count == 17)
+
+        let sentence16 = "womenjintianwanshangyiqiqubeijingchihuoguohaoma"
+        #expect(engine.segmentTokens(rawInput: sentence16).count == 16)
+        let res16 = engine.query(rawInput: sentence16)
+        #expect(res16.first?.text == "我们今天晚上一起去北京吃火锅好吗")
+        #expect(res16.first?.text.count == 16)
+        #expect(res16.first?.consumedInputLength == sentence16.count)
+
+        // 2. Secondary homophones preserved alongside top candidate
+        let shanxi = engine.query(rawInput: "woqushanxi")
+        #expect(shanxi.first?.text == "我去陕西")
+        #expect(shanxi.contains { $0.text == "我去山西" })
+
+        let shuijiao = engine.query(rawInput: "woxiangchishuijiao")
+        #expect(shuijiao.contains { $0.text == "我想吃水饺" })
+
+        let shijian = engine.query(rawInput: "zhegeshijian")
+        #expect(shijian.contains { $0.text == "这个事件" })
+
+        // 3. 5-syllable partial prefix candidate
+        let fiveSyl = engine.query(rawInput: "weilaikejichengshangban")
+        #expect(fiveSyl.contains { $0.text == "未来科技城" && $0.consumedInputLength == 15 })
+
+        // 4. Zero-conflict typos
+        for (typo, expected) in [
+            ("womne", "我们"),
+            ("zhne", "真"),
+            ("yuo", "有"),
+            ("jui", "就"),
+            ("hau", "好")
+        ] {
+            #expect(engine.query(rawInput: typo).first?.text == expected, "Typo \(typo) did not rank \(expected) at #1")
+        }
+    }
+
+    @Test("Cursor-0 Backspace keeps page & highlight, inputText quote Backspace rolls back pairing, and UpdateController initializes")
+    @MainActor
+    func cursorZeroBackspaceInputTextQuoteRollbackAndUpdateController() throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        SmartPunctuation.shared.resetState()
+        defer {
+            settings.resetToDefaults()
+            SmartPunctuation.shared.resetState()
+        }
+
+        let client = MockTextInputClient()
+        let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+        let panel = CandidatePanelHolder.shared
+
+        // 1. Backspace at cursor index 0 must NOT reset currentPage or selectedIndex
+        #expect(controller.inputText("shi", client: client))
+        #expect(controller.handle(makeKeyEvent(char: "=", keyCode: 24), client: client))
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 125), client: client))
+        #expect(panel.state.currentPage == 2)
+        #expect(panel.state.selectedIndex == 1)
+
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 115), client: client)) // Home -> cursor 0
+        #expect(client.markedSelection.location == 0)
+        #expect(controller.handle(makeKeyEvent(char: "\u{8}", keyCode: 51), client: client))
+        #expect(client.markedText == "shi")
+        #expect(panel.state.currentPage == 2)
+        #expect(panel.state.selectedIndex == 1)
+
+        #expect(controller.handle(makeKeyEvent(char: "\u{8}", keyCode: 51, modifiers: [.option]), client: client))
+        #expect(client.markedText == "shi")
+        #expect(panel.state.currentPage == 2)
+        #expect(panel.state.selectedIndex == 1)
+        controller.resetComposition(client: client)
+
+        // 2. inputText smart quote '"' followed by Backspace rolls back quote pairing state
+        client.reset()
+        #expect(controller.inputText("\"", client: client))
+        #expect(client.insertedText == "“")
+        client.insertedText = ""
+        _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+        #expect(controller.inputText("\"", client: client))
+        #expect(client.insertedText == "“")
+
+        // 3. UpdateController starts cleanly with 6-hour default check interval and ready updater
+        let updater = UpdateController.shared
+        #expect(UpdateController.checkInterval == 21_600)
+        updater.start()
+        #expect(updater.canCheckForUpdates)
+    }
+}
