@@ -8,31 +8,68 @@ enum CandidatePanelMetrics {
     static let rowHeight: CGFloat = 30
     static let rowSpacing: CGFloat = 3
 
+    static func rowHeight(for fontSize: CGFloat) -> CGFloat {
+        max(26, ceil(fontSize * 1.6 + 6))
+    }
+
+    static func indexFontSize(for fontSize: CGFloat) -> CGFloat {
+        max(9, round(fontSize * 0.67))
+    }
+
+    static func commentFontSize(for fontSize: CGFloat) -> CGFloat {
+        max(10, round(fontSize * 0.73))
+    }
+
     static func height(for mode: CandidateViewMode) -> CGFloat {
-        headerHeight + 0.5 + outerPadding * 2
-            + (mode == .scroll ? rowHeight * 2 + rowSpacing : rowHeight)
+        height(for: mode, orientation: .horizontal, candidateCount: 7, fontSize: 15)
+    }
+
+    static func height(
+        for mode: CandidateViewMode,
+        orientation: CandidateLayoutOrientation = .horizontal,
+        candidateCount: Int = 7,
+        fontSize: CGFloat = 15
+    ) -> CGFloat {
+        let itemHeight = rowHeight(for: fontSize)
+        let bodyHeight: CGFloat
+        switch orientation {
+        case .horizontal:
+            bodyHeight = mode == .scroll ? itemHeight * 2 + rowSpacing : itemHeight
+        case .vertical:
+            let count = max(1, candidateCount)
+            bodyHeight = CGFloat(count) * itemHeight + CGFloat(max(0, count - 1)) * rowSpacing
+        }
+        return headerHeight + 0.5 + outerPadding * 2 + bodyHeight
     }
 
     static func contentWidth(
         candidates: [Candidate], viewMode: CandidateViewMode, pinyin: String,
-        mode: InputMode, currentPage: Int, totalPages: Int, maximum: CGFloat = 640
+        mode: InputMode, currentPage: Int, totalPages: Int, maximum: CGFloat = 640,
+        layoutOrientation: CandidateLayoutOrientation = .horizontal, fontSize: CGFloat = 15
     ) -> CGFloat {
         func measure(_ text: String, font: NSFont) -> CGFloat {
             ceil((text as NSString).size(withAttributes: [.font: font]).width)
         }
+        let indexSize = indexFontSize(for: fontSize)
+        let commentSize = commentFontSize(for: fontSize)
         let middle = (candidates.count + 1) / 2
-        let rows: [[Int]] = viewMode == .scroll
-            ? [Array(0..<middle), Array(middle..<candidates.count)]
-            : [Array(candidates.indices)]
+        let rows: [[Int]]
+        if layoutOrientation == .vertical {
+            rows = candidates.indices.map { [$0] }
+        } else if viewMode == .scroll {
+            rows = [Array(0..<middle), Array(middle..<candidates.count)]
+        } else {
+            rows = [Array(candidates.indices)]
+        }
         let widestRow = rows.map { row in
             row.reduce(CGFloat(6)) { result, index in
                 let candidate = candidates[index]
-                var width = measure(candidate.text, font: .systemFont(ofSize: 15, weight: .medium)) + 14
+                var width = measure(candidate.text, font: .systemFont(ofSize: fontSize, weight: .medium)) + 14
                 if index < 9 {
-                    width += measure(String(index + 1), font: .monospacedDigitSystemFont(ofSize: 10, weight: .medium)) + 5
+                    width += measure(String(index + 1), font: .monospacedDigitSystemFont(ofSize: indexSize, weight: .medium)) + 5
                 }
                 if let comment = candidate.comment, !comment.isEmpty {
-                    width += measure(comment, font: .systemFont(ofSize: 11)) + 5
+                    width += measure(comment, font: .systemFont(ofSize: commentSize)) + 5
                 }
                 return result + width + (index == row.last ? 0 : rowSpacing)
             }
@@ -43,7 +80,8 @@ enum CandidatePanelMetrics {
             : 0
         let header = 10 + badge + 6 + min(120, measure(pinyin, font: .systemFont(ofSize: 12, weight: .medium)))
             + 8 + pageControls + 6 + 22 + 4
-        return min(maximum, max(128, max(widestRow, header)))
+        let minimum: CGFloat = layoutOrientation == .vertical ? 168 : 128
+        return min(maximum, max(minimum, max(widestRow, header)))
     }
 }
 
@@ -63,6 +101,9 @@ public struct CandidateListView: View {
     public let onCandidateAction: ((Int, CandidateAction) -> Void)?
     public let isCandidatePinned: ((Int) -> Bool)?
     public let viewportWidth: CGFloat?
+    public let isTraditional: Bool
+    public let layoutOrientation: CandidateLayoutOrientation
+    public let fontSize: CGFloat
 
     @State private var hoveredIndex: Int?
 
@@ -80,7 +121,10 @@ public struct CandidateListView: View {
         onPageDelta: ((Int) -> Void)? = nil,
         onCandidateAction: ((Int, CandidateAction) -> Void)? = nil,
         isCandidatePinned: ((Int) -> Bool)? = nil,
-        viewportWidth: CGFloat? = nil
+        viewportWidth: CGFloat? = nil,
+        isTraditional: Bool = false,
+        layoutOrientation: CandidateLayoutOrientation = .horizontal,
+        fontSize: CGFloat = 15
     ) {
         self.inputString = inputString
         self.displayPinyin = displayPinyin
@@ -96,6 +140,9 @@ public struct CandidateListView: View {
         self.onCandidateAction = onCandidateAction
         self.isCandidatePinned = isCandidatePinned
         self.viewportWidth = viewportWidth
+        self.isTraditional = isTraditional
+        self.layoutOrientation = layoutOrientation
+        self.fontSize = fontSize
     }
 
     private var rows: [[Int]] {
@@ -106,12 +153,17 @@ public struct CandidateListView: View {
             .filter { !$0.isEmpty }
     }
 
+    private var itemRowHeight: CGFloat {
+        CandidatePanelMetrics.rowHeight(for: fontSize)
+    }
+
     // The panel passes the same measured width after applying display boundaries.
     private var contentWidth: CGFloat {
         viewportWidth ?? CandidatePanelMetrics.contentWidth(
             candidates: candidates, viewMode: viewMode,
             pinyin: displayPinyin.isEmpty ? inputString : displayPinyin,
-            mode: mode, currentPage: currentPage, totalPages: totalPages
+            mode: mode, currentPage: currentPage, totalPages: totalPages,
+            layoutOrientation: layoutOrientation, fontSize: fontSize
         )
     }
 
@@ -131,9 +183,13 @@ public struct CandidateListView: View {
         .fixedSize()
     }
 
+    private var badgeTitle: String {
+        (mode == .chinese && isTraditional) ? "繁" : mode.badgeTitle
+    }
+
     private var headerView: some View {
         HStack(spacing: 6) {
-            Text(mode.badgeTitle)
+            Text(badgeTitle)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .padding(.horizontal, 4)
@@ -190,63 +246,97 @@ public struct CandidateListView: View {
         .accessibilityLabel(delta < 0 ? "上一页" : "下一页")
     }
 
+    @ViewBuilder
     private var candidateContent: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: CandidatePanelMetrics.rowSpacing) {
-                    ForEach(rows.indices, id: \.self) { row in
-                        HStack(spacing: CandidatePanelMetrics.rowSpacing) {
-                            ForEach(rows[row], id: \.self) { index in
-                                candidateItem(index: index, candidate: candidates[index])
-                                    .id(index)
+        if layoutOrientation == .vertical {
+            let count = max(1, candidates.count)
+            let verticalHeight = CGFloat(count) * itemRowHeight
+                + CGFloat(max(0, count - 1)) * CandidatePanelMetrics.rowSpacing
+            VStack(alignment: .leading, spacing: CandidatePanelMetrics.rowSpacing) {
+                ForEach(candidates.indices, id: \.self) { index in
+                    candidateItem(index: index, candidate: candidates[index])
+                }
+            }
+            .padding(.horizontal, 3)
+            .frame(width: contentWidth, height: verticalHeight, alignment: .topLeading)
+            .onChange(of: candidates) { _, _ in
+                hoveredIndex = nil
+            }
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: CandidatePanelMetrics.rowSpacing) {
+                        ForEach(rows.indices, id: \.self) { row in
+                            HStack(spacing: CandidatePanelMetrics.rowSpacing) {
+                                ForEach(rows[row], id: \.self) { index in
+                                    candidateItem(index: index, candidate: candidates[index])
+                                        .id(index)
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 3)
                 }
-                .padding(.horizontal, 3)
+                .frame(width: contentWidth, height: viewMode == .scroll
+                    ? itemRowHeight * 2 + CandidatePanelMetrics.rowSpacing
+                    : itemRowHeight)
+                .onChange(of: selectedIndex) { _, index in
+                    proxy.scrollTo(index)
+                }
+                .onChange(of: candidates) { _, _ in
+                    proxy.scrollTo(selectedIndex)
+                    hoveredIndex = nil
+                }
+                .onChange(of: viewMode) { _, _ in proxy.scrollTo(selectedIndex) }
             }
-            .frame(width: contentWidth, height: viewMode == .scroll
-                ? CandidatePanelMetrics.rowHeight * 2 + CandidatePanelMetrics.rowSpacing
-                : CandidatePanelMetrics.rowHeight)
-            .onChange(of: selectedIndex) { _, index in
-                proxy.scrollTo(index)
+        }
+    }
+
+    @ViewBuilder
+    private func candidateItemLabel(index: Int, candidate: Candidate, selected: Bool) -> some View {
+        let rowContent = HStack(spacing: 5) {
+            if index < 9 {
+                Text("\(index + 1)")
+                    .font(.system(size: CandidatePanelMetrics.indexFontSize(for: fontSize), weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(selected ? Color.white.opacity(0.7) : Color.secondary.opacity(0.7))
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .onChange(of: candidates) { _, _ in
-                proxy.scrollTo(selectedIndex)
-                hoveredIndex = nil
+            Text(candidate.text)
+                .font(.system(size: fontSize, weight: .medium))
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .truncationMode(.tail)
+            if let comment = candidate.comment, !comment.isEmpty {
+                Text(comment)
+                    .font(.system(size: CandidatePanelMetrics.commentFontSize(for: fontSize)))
+                    .foregroundStyle(selected ? Color.white.opacity(0.75) : Color.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .onChange(of: viewMode) { _, _ in proxy.scrollTo(selectedIndex) }
+            if layoutOrientation == .vertical {
+                Spacer(minLength: 0)
+            }
+        }
+        .lineLimit(1)
+
+        if layoutOrientation == .horizontal {
+            rowContent.fixedSize()
+        } else {
+            rowContent
         }
     }
 
     private func candidateItem(index: Int, candidate: Candidate) -> some View {
         let selected = index == selectedIndex
         return Button { onSelectCandidate?(index) } label: {
-            HStack(spacing: 5) {
-                if index < 9 {
-                    Text("\(index + 1)")
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(selected ? Color.white.opacity(0.7) : Color.secondary.opacity(0.7))
+            candidateItemLabel(index: index, candidate: candidate, selected: selected)
+                .padding(.horizontal, 7)
+                .frame(height: itemRowHeight)
+                .frame(maxWidth: layoutOrientation == .vertical ? .infinity : nil, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(selected ? Color.accentColor : Color.primary.opacity(hoveredIndex == index ? 0.06 : 0))
                 }
-                Text(candidate.text)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(selected ? Color.white : Color.primary)
-                if let comment = candidate.comment, !comment.isEmpty {
-                    Text(comment)
-                        .font(.system(size: 11))
-                        .foregroundStyle(selected ? Color.white.opacity(0.75) : Color.secondary)
-                }
-            }
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 7)
-            .frame(height: CandidatePanelMetrics.rowHeight)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(selected ? Color.accentColor : Color.primary.opacity(hoveredIndex == index ? 0.06 : 0))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .contextMenu {

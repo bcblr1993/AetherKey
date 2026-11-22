@@ -29,10 +29,13 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private var candidateViewMode: CandidateViewMode = AetherSettings.shared.defaultViewMode
     private var currentPage: Int = 1
     private var pageSize: Int {
-        return candidateViewMode == .scroll ? 14 : 7
+        let base = AetherSettings.shared.candidatePageSize
+        if AetherSettings.shared.candidateLayoutOrientation == .vertical { return base }
+        return candidateViewMode == .scroll ? base * 2 : base
     }
     private var selectedIndexInPage: Int = 0
     private weak var activeClient: AnyObject? = nil
+    private var menuTargetBundleIdentifier: String? = nil
     
     // Tracking context & Shift single-tap
     private var shiftPressTime: TimeInterval = 0
@@ -65,13 +68,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         shiftDisqualifiedUntilAllReleased = false
         if let overridden = Self.savedManualMode(for: sender) {
             inputMode = overridden
-        } else if AetherSettings.shared.isAutoEnglishInTerminalEnabled,
-                  let textInput = sender as? IMKTextInput,
-                  let bundleId = textInput.bundleIdentifier(),
-                  ContextDetector.shared.isTerminalApp(bundleIdentifier: bundleId) {
-            inputMode = .english
         } else {
-            inputMode = .chinese
+            let bundleId = (sender as? IMKTextInput)?.bundleIdentifier()
+            inputMode = ContextDetector.shared.resolvedDefaultMode(for: bundleId, settings: AetherSettings.shared)
         }
     }
 
@@ -88,6 +87,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         SmartPunctuation.shared.resetState()
         if !buffer.isEmpty {
             resetComposition(client: sender)
+        } else if inputMode == .vMode {
+            inputMode = .chinese
         }
         super.deactivateServer(sender)
     }
@@ -116,16 +117,49 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         menu.addItem(NSMenuItem.separator())
         
-        let modeTitle = (inputMode == .chinese) ? "当前模式：中文 (单击 Shift 切换)" : "当前模式：英文 EN (单击 Shift 切换)"
+        let modeTitle: String
+        switch inputMode {
+        case .chinese:
+            modeTitle = "当前模式：中文 (单击 Shift 切换)"
+        case .english:
+            modeTitle = "当前模式：英文 EN (单击 Shift 切换)"
+        case .vMode:
+            modeTitle = "当前模式：v 宏模式 (单击 Shift 切换)"
+        }
         let modeItem = NSMenuItem(title: modeTitle, action: #selector(menuToggleInputMode), keyEquivalent: "")
         modeItem.target = self
         menu.addItem(modeItem)
-        
-        let viewTitle = (candidateViewMode == .scroll) ? "候选视图：卷轴模式 (⌥Tab 切换)" : "候选视图：翻页模式 (⌥Tab 切换)"
-        let viewItem = NSMenuItem(title: viewTitle, action: #selector(menuToggleViewMode), keyEquivalent: "")
-        viewItem.target = self
-        menu.addItem(viewItem)
-        
+
+        if let bundleId = currentClientBundleIdentifier(from: activeClient) {
+            menuTargetBundleIdentifier = bundleId
+            let currentRule = settings.appDefaultMode(for: bundleId)
+            let ruleLabel = currentRule?.title ?? "跟随全局"
+            let appRuleRootItem = NSMenuItem(title: "此应用默认模式：\(ruleLabel)", action: nil, keyEquivalent: "")
+            let appRuleSubmenu = NSMenu(title: "此应用默认模式")
+
+            let globalItem = NSMenuItem(title: "跟随全局", action: #selector(menuSetAppDefaultGlobal), keyEquivalent: "")
+            globalItem.target = self
+            globalItem.state = currentRule == nil ? .on : .off
+            appRuleSubmenu.addItem(globalItem)
+
+            let englishItem = NSMenuItem(title: "默认英文", action: #selector(menuSetAppDefaultEnglish), keyEquivalent: "")
+            englishItem.target = self
+            englishItem.state = currentRule == .english ? .on : .off
+            appRuleSubmenu.addItem(englishItem)
+
+            let chineseItem = NSMenuItem(title: "默认中文", action: #selector(menuSetAppDefaultChinese), keyEquivalent: "")
+            chineseItem.target = self
+            chineseItem.state = currentRule == .chinese ? .on : .off
+            appRuleSubmenu.addItem(chineseItem)
+
+            appRuleRootItem.submenu = appRuleSubmenu
+            menu.addItem(appRuleRootItem)
+        } else {
+            menuTargetBundleIdentifier = nil
+        }
+
+        let schemeRootItem = NSMenuItem(title: "输入方案：\(settings.pinyinScheme.title)", action: nil, keyEquivalent: "")
+        let schemeSubmenu = NSMenu(title: "输入方案")
         for scheme in PinyinScheme.allCases {
             let action: Selector
             switch scheme {
@@ -136,12 +170,31 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             case .sogou: action = #selector(menuSelectSogou)
             case .wubi86: action = #selector(menuSelectWubi86)
             }
-            let item = NSMenuItem(title: "输入方案：\(scheme.title)", action: action, keyEquivalent: "")
+            let item = NSMenuItem(title: scheme.title, action: action, keyEquivalent: "")
             item.target = self
             item.state = settings.pinyinScheme == scheme ? .on : .off
-            menu.addItem(item)
+            schemeSubmenu.addItem(item)
         }
+        schemeRootItem.submenu = schemeSubmenu
+        menu.addItem(schemeRootItem)
+        
+        let viewTitle = (candidateViewMode == .scroll) ? "候选视图：卷轴模式 (⌥Tab 切换)" : "候选视图：翻页模式 (⌥Tab 切换)"
+        let viewItem = NSMenuItem(title: viewTitle, action: #selector(menuToggleViewMode), keyEquivalent: "")
+        viewItem.target = self
+        menu.addItem(viewItem)
+
+        let orientationItem = NSMenuItem(title: "候选竖排布局", action: #selector(menuToggleLayoutOrientation), keyEquivalent: "")
+        orientationItem.target = self
+        orientationItem.state = settings.candidateLayoutOrientation == .vertical ? .on : .off
+        menu.addItem(orientationItem)
+
         menu.addItem(NSMenuItem.separator())
+
+        let traditionalItem = NSMenuItem(title: "输出繁体中文", action: #selector(menuToggleTraditional), keyEquivalent: "f")
+        traditionalItem.keyEquivalentModifierMask = [.control, .shift]
+        traditionalItem.target = self
+        traditionalItem.state = settings.isTraditionalChineseEnabled ? .on : .off
+        menu.addItem(traditionalItem)
         
         let panguItem = NSMenuItem(title: "盘古之白自动空格", action: #selector(menuTogglePangu), keyEquivalent: "")
         panguItem.target = self
@@ -205,6 +258,58 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
     @objc private func menuToggleViewMode() {
         toggleViewMode(client: activeClient)
+    }
+
+    @objc private func menuToggleLayoutOrientation() {
+        let current = AetherSettings.shared.candidateLayoutOrientation
+        AetherSettings.shared.candidateLayoutOrientation = (current == .vertical ? .horizontal : .vertical)
+        if !buffer.isEmpty {
+            currentPage = 1
+            selectedIndexInPage = 0
+            renderPanel(client: activeClient)
+        }
+    }
+
+    @objc private func menuToggleTraditional() {
+        AetherSettings.shared.isTraditionalChineseEnabled.toggle()
+        showScriptHUD(client: activeClient)
+        if !buffer.isEmpty {
+            updateCandidates(client: activeClient)
+        }
+    }
+
+    @objc private func menuSetAppDefaultGlobal() {
+        applyAppDefaultMode(nil)
+    }
+
+    @objc private func menuSetAppDefaultEnglish() {
+        applyAppDefaultMode(.english)
+    }
+
+    @objc private func menuSetAppDefaultChinese() {
+        applyAppDefaultMode(.chinese)
+    }
+
+    private func currentClientBundleIdentifier(from client: Any?) -> String? {
+        guard let raw = (client as? IMKTextInput)?.bundleIdentifier()?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    private func applyAppDefaultMode(_ mode: AppDefaultInputMode?) {
+        let targetClient = resolveClient(activeClient)
+        guard let bundleId = currentClientBundleIdentifier(from: targetClient) ?? menuTargetBundleIdentifier else { return }
+        AetherSettings.shared.setAppDefaultMode(mode, for: bundleId)
+        Self.clearManualMode(for: targetClient, bundleIdentifier: bundleId)
+
+        let resolved = ContextDetector.shared.resolvedDefaultMode(for: bundleId, settings: AetherSettings.shared)
+        if inputMode != resolved {
+            if !buffer.isEmpty && (resolved == .english || inputMode == .vMode) {
+                commitRaw(client: targetClient)
+            }
+            inputMode = resolved
+        }
     }
 
     @objc private func menuTogglePangu() {
@@ -283,6 +388,19 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             return true
         }
 
+        // Consume Ctrl + Shift + F for Simplified/Traditional toggle while preserving any active composition.
+        if event.keyCode == 3,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.control, .shift] {
+            if !event.isARepeat {
+                AetherSettings.shared.isTraditionalChineseEnabled.toggle()
+                showScriptHUD(client: sender)
+                if !buffer.isEmpty {
+                    updateCandidates(client: sender)
+                }
+            }
+            return true
+        }
+
         // Pass through Command / Control keyboard shortcuts instantly
         let flags = event.modifierFlags
         if flags.contains(.command) || flags.contains(.control) {
@@ -307,6 +425,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             // Backspace / Delete
             case 51:
                 let start = flags.contains(.option) ? previousSyllableBoundary() : max(0, compositionCursor - 1)
+                guard start < compositionCursor else { return true }
                 replaceComposition(start..<compositionCursor, with: "")
                 if buffer.isEmpty {
                     resetComposition(client: sender)
@@ -481,8 +600,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         
         // Numeric selection keys 1 - 9
         if let char = characters.first, char.isNumber, let digit = char.wholeNumberValue, digit >= 1 && digit <= 9 {
-            // In v-mode, digits are part of the mathematical/RMB expression!
-            if isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86) {
+            let isMacroKeyword = VModeCalculator.isMacroKeywordMode(buffer)
+            // In v-mode math/RMB expressions, digits are part of the expression;
+            // in macro keyword mode (e.g. vdate, vnow, varrow), 1-9 select candidates directly.
+            if (isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86)) && !isMacroKeyword {
                 insertComposition(String(char), client: sender)
                 updateCandidates(client: sender)
                 return true
@@ -494,18 +615,27 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 commitCandidate(pageCandidates[targetIdx], client: sender)
                 return true
             }
+            if isMacroKeyword {
+                return true
+            }
         }
         
         // If in v-mode and '0' is typed
-        if isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86), let char = characters.first, char == "0" {
-            insertComposition(String(char), client: sender)
-            updateCandidates(client: sender)
+        if (isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86)),
+           let char = characters.first, char == "0" {
+            if !VModeCalculator.isMacroKeywordMode(buffer) {
+                insertComposition(String(char), client: sender)
+                updateCandidates(client: sender)
+            }
             return true
         }
         
         // Character appending: letters (preserving original case in rawBuffer), digits in v-mode, math operators, or apostrophe
         if let firstChar = characters.first {
-            if (firstChar == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || firstChar.isLetter || (firstChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z"))) || (isCalculatorComposition && "+-*/.()^%".contains(firstChar)) {
+            if (firstChar == ";" && schemeUsesSemicolonFinal && acceptsSemicolonFinal)
+                || firstChar.isLetter
+                || (firstChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z")))
+                || (isCalculatorComposition && !VModeCalculator.isMacroKeywordMode(buffer) && "+-*/.()^%".contains(firstChar)) {
                 appendCode(characters, client: sender)
                 if partialComposedText.isEmpty {
                     originalFullBuffer = buffer
@@ -555,6 +685,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         let formatted = AetherSettings.shared.isPanguSpacingEnabled
                             ? PanguSpacing.shared.formatCommitText(preceding: preceding, committing: String(char))
                             : String(char)
+                        lastLearnedCommits.removeAll()
+                        lastCommitWasSmartPunctuation = false
                         commitDirect(text: formatted, client: sender)
                         handled = true
                     } else {
@@ -569,6 +701,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     let converted = AetherSettings.shared.usesChinesePunctuation
                         ? SmartPunctuation.shared.convert(char: char, precedingChar: preceding)
                         : String(char)
+                    lastLearnedCommits.removeAll()
+                    lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
                     commitDirect(text: converted, client: sender)
                     handled = true
                 } else if !char.unicodeScalars.allSatisfy(CharacterSet.controlCharacters.contains) {
@@ -583,7 +717,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 } else if char == "\n" || char == "\r" {
                     commitRaw(client: sender)
                     handled = true
-                } else if (isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86)) && (char.isNumber || "+-*/.()^%".contains(char)) {
+                } else if (isCalculatorComposition || (buffer == "v" && compositionScheme != .wubi86))
+                            && !VModeCalculator.isMacroKeywordMode(buffer)
+                            && (char.isNumber || "+-*/.()^%".contains(char)) {
                     insertComposition(String(char), client: sender)
                     updateCandidates(client: sender)
                     handled = true
@@ -593,8 +729,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     if targetIdx < pageCandidates.count {
                         commitCandidate(pageCandidates[targetIdx], client: sender)
                         handled = true
+                    } else if VModeCalculator.isMacroKeywordMode(buffer) {
+                        handled = true
                     }
-                } else if (char == ";" && compositionScheme == .microsoft && acceptsMicrosoftFinal) || lowerChar.isLetter || (lowerChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z"))) {
+                } else if VModeCalculator.isMacroKeywordMode(buffer) && char.isNumber {
+                    handled = true
+                } else if (char == ";" && schemeUsesSemicolonFinal && acceptsSemicolonFinal) || lowerChar.isLetter || (lowerChar == "'" && (compositionScheme != .wubi86 || buffer.hasPrefix("z"))) {
                     appendCode(String(char), client: sender)
                     if partialComposedText.isEmpty {
                         originalFullBuffer = buffer
@@ -607,6 +747,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     let converted = AetherSettings.shared.usesChinesePunctuation
                         ? SmartPunctuation.shared.convert(char: char, precedingChar: preceding)
                         : String(char)
+                    lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
                     commitDirect(text: converted, client: sender)
                     handled = true
                 }
@@ -654,7 +795,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
     private func insertComposition(_ text: String, client: Any? = nil) {
         if buffer.isEmpty {
-            let resolved = client ?? activeClient
+            let resolved = resolveClient(client)
             compositionGeneration += 1
             compositionScheme = AetherSettings.shared.pinyinScheme
             candidateViewMode = AetherSettings.shared.defaultViewMode
@@ -679,7 +820,11 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         return committedContextEnd == selection.location ? PinyinContext.suffix(committedContext) : ""
     }
 
-    private var acceptsMicrosoftFinal: Bool {
+    private var schemeUsesSemicolonFinal: Bool {
+        compositionScheme == .microsoft || compositionScheme == .sogou
+    }
+
+    private var acceptsSemicolonFinal: Bool {
         let prefix = String(buffer.prefix(compositionCursor))
         return (prefix.split(separator: "'", omittingEmptySubsequences: false).last?.count ?? 0) % 2 == 1
     }
@@ -719,10 +864,11 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private func manageCandidate(_ candidate: Candidate, action: CandidateAction, client: Any?) {
         guard !isCalculatorComposition, !candidate.isEmoji, candidate.comment != "英" else { return }
         let reading = candidateReading(candidate)
+        let targetWord = candidate.canonicalText
         switch action {
-        case .pin: UserLexicon.shared.setPinned(candidate.text, for: reading, pinned: true)
-        case .unpin: UserLexicon.shared.setPinned(candidate.text, for: reading, pinned: false)
-        case .forget: UserLexicon.shared.forget(candidate.text, for: reading)
+        case .pin: UserLexicon.shared.setPinned(targetWord, for: reading, pinned: true)
+        case .unpin: UserLexicon.shared.setPinned(targetWord, for: reading, pinned: false)
+        case .forget: UserLexicon.shared.forget(targetWord, for: reading)
         }
         updateCandidates(client: client)
     }
@@ -790,6 +936,18 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
     }
 
+    private func showScriptHUD(client: Any?) {
+        let targetClient = resolveClient(client)
+        let anchor = queryHostCaretRect(client: targetClient)
+        let level = (targetClient as? IMKTextInput)?.windowLevel()
+        let isTraditional = AetherSettings.shared.isTraditionalChineseEnabled
+        let badge = isTraditional ? "繁" : "简"
+        let title = isTraditional ? "繁体中文" : "简体中文"
+        onMainActor {
+            StatusHUDHolder.shared.show(badge: badge, title: title, isAccent: true, anchorRect: anchor, clientWindowLevel: level)
+        }
+    }
+
     private func onMainActor(_ block: @MainActor @escaping @Sendable () -> Void) {
         if Thread.isMainThread {
             MainActor.assumeIsolated { block() }
@@ -832,6 +990,17 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         manualModeLock.lock()
         manualModeOverrides[id] = mode
         manualModeLock.unlock()
+    }
+
+    private static func clearManualMode(for client: Any?, bundleIdentifier: String? = nil) {
+        manualModeLock.lock()
+        defer { manualModeLock.unlock() }
+        if let id = clientIdentifier(for: client) {
+            manualModeOverrides.removeValue(forKey: id)
+        }
+        if let bundle = bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines), !bundle.isEmpty {
+            manualModeOverrides.removeValue(forKey: "app:\(bundle)")
+        }
     }
 
     private func syncPassThroughContext(from event: NSEvent) {
@@ -945,6 +1114,27 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             }
             allCandidates = DoublePinyin.query(buffer, scheme: compositionScheme, precedingText: compositionContext)
         }
+
+        if rawBuffer != buffer {
+            let preservedRaw = rawBuffer
+            allCandidates = allCandidates.map { candidate in
+                guard candidate.comment == "英" else { return candidate }
+                return Candidate(
+                    id: candidate.id,
+                    text: preservedRaw,
+                    comment: candidate.comment,
+                    pinyin: candidate.pinyin,
+                    isVMode: candidate.isVMode,
+                    isEmoji: candidate.isEmoji,
+                    consumedInputLength: candidate.consumedInputLength,
+                    rawText: candidate.rawText
+                )
+            }
+        }
+
+        if !isCalculatorComposition && AetherSettings.shared.isTraditionalChineseEnabled {
+            allCandidates = ChineseScriptConverter.shared.convertCandidates(allCandidates, toTraditional: true)
+        }
         
         currentPage = 1
         selectedIndexInPage = 0
@@ -1028,13 +1218,14 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let targetClient = resolveClient(client)
         let consumed = candidate.consumedInputLength
         let isPartial = (consumed > 0 && consumed < buffer.count && !isCalculatorComposition)
+        let canonicalWord = candidate.canonicalText
         
         if isPartial {
             // Partial selection in a multi-syllable input (e.g. picking "今天" from "jintiantianqi"):
             // Accumulate partial composed text and keep remaining pinyin in buffer!
             let consumedPinyin = candidateReading(candidate)
-            UserLexicon.shared.recordCommit(pinyin: consumedPinyin, word: candidate.text)
-            lastLearnedCommits = [(pinyin: consumedPinyin, word: candidate.text)]
+            UserLexicon.shared.recordCommit(pinyin: consumedPinyin, word: canonicalWord)
+            lastLearnedCommits = [(pinyin: consumedPinyin, word: canonicalWord)]
             lastCommitWasSmartPunctuation = false
             
             let formattedPart = AetherSettings.shared.isPanguSpacingEnabled
@@ -1042,9 +1233,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 : candidate.text
             commitDirect(text: formattedPart, client: targetClient)
             
-            compositionContext = PinyinContext.suffix(compositionContext + candidate.text)
+            compositionContext = PinyinContext.suffix(compositionContext + canonicalWord)
             compositionPrecedingChar = formattedPart.last ?? candidate.text.last
-            partialComposedText += candidate.text
+            partialComposedText += canonicalWord
             buffer = String(buffer.dropFirst(consumed))
             rawBuffer = String(rawBuffer.dropFirst(min(consumed, rawBuffer.count)))
             compositionCursor = buffer.count
@@ -1060,12 +1251,12 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         lastLearnedCommits.removeAll()
         lastCommitWasSmartPunctuation = false
         if !isCalculatorComposition && candidate.comment != "英" && !candidate.isEmoji {
-            UserLexicon.shared.recordCommit(pinyin: fullPinyin, word: candidate.text)
-            lastLearnedCommits.append((pinyin: fullPinyin, word: candidate.text))
+            UserLexicon.shared.recordCommit(pinyin: fullPinyin, word: canonicalWord)
+            lastLearnedCommits.append((pinyin: fullPinyin, word: canonicalWord))
             if !partialComposedText.isEmpty && !originalFullBuffer.isEmpty {
                 // Also learn the complete multi-part phrase the user assembled!
                 let assembledReading = DoublePinyin.reading(originalFullBuffer, scheme: compositionScheme)
-                let assembledWord = partialComposedText + candidate.text
+                let assembledWord = partialComposedText + canonicalWord
                 UserLexicon.shared.recordCommit(pinyin: assembledReading, word: assembledWord)
                 lastLearnedCommits.append((pinyin: assembledReading, word: assembledWord))
             }
@@ -1141,6 +1332,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         allCandidates.removeAll()
         currentPage = 1
         selectedIndexInPage = 0
+        if inputMode == .vMode {
+            inputMode = .chinese
+        }
         
         onMainActor { CandidatePanelHolder.shared.dismiss() }
     }
@@ -1195,16 +1389,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             usedMouseFallback = true
         }
 
-        var curCandidates = candidatesForCurrentPage()
+        let curCandidates = candidatesForCurrentPage()
         let curBuffer = buffer
         let curRawBuffer = rawBuffer
-        if curRawBuffer != curBuffer {
-            curCandidates = curCandidates.map { candidate in
-                candidate.comment == "英"
-                    ? Candidate(text: curRawBuffer, comment: candidate.comment, pinyin: candidate.pinyin, isVMode: candidate.isVMode, isEmoji: candidate.isEmoji, consumedInputLength: candidate.consumedInputLength)
-                    : candidate
-            }
-        }
         let baseDisplayPinyin = (inputMode == .vMode)
             ? curRawBuffer
             : (compositionScheme == .full
@@ -1252,7 +1439,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 let candidates = self.candidatesForCurrentPage()
                 guard candidates.indices.contains(index) else { return false }
                 let candidate = candidates[index]
-                return UserLexicon.shared.isPinned(candidate.text, for: self.candidateReading(candidate))
+                return UserLexicon.shared.isPinned(candidate.canonicalText, for: self.candidateReading(candidate))
             }
             panel.state.onToggleViewMode = {
                 self?.toggleViewMode(client: self?.activeClient)

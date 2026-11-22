@@ -14,14 +14,42 @@ public final class CandidateState: ObservableObject, @unchecked Sendable {
     @Published public var totalPages: Int = 1
     @Published public var isVisible: Bool = false
     @Published public var viewportWidth: CGFloat? = nil
-    
+    @Published public var isTraditional: Bool = false {
+        didSet { if !isSyncingFromSettings { hasManualTraditionalOverride = true } }
+    }
+    @Published public var layoutOrientation: CandidateLayoutOrientation = .horizontal {
+        didSet { if !isSyncingFromSettings { hasManualLayoutOverride = true } }
+    }
+    @Published public var fontSize: CGFloat = 15 {
+        didSet { if !isSyncingFromSettings { hasManualFontSizeOverride = true } }
+    }
+
+    private var isSyncingFromSettings = false
+    private var hasManualTraditionalOverride = false
+    private var hasManualLayoutOverride = false
+    private var hasManualFontSizeOverride = false
+
     public var onCandidateAction: ((Int, CandidateAction) -> Void)?
     public var isCandidatePinned: ((Int) -> Bool)?
     public var onSelectCandidate: ((Int) -> Void)?
     public var onToggleViewMode: (() -> Void)?
     public var onPageDelta: ((Int) -> Void)?
-    
+
     public init() {}
+
+    fileprivate func syncFromSettings(_ settings: AetherSettings = .shared) {
+        isSyncingFromSettings = true
+        defer { isSyncingFromSettings = false }
+        if !hasManualTraditionalOverride && isTraditional != settings.isTraditionalChineseEnabled {
+            isTraditional = settings.isTraditionalChineseEnabled
+        }
+        if !hasManualLayoutOverride && layoutOrientation != settings.candidateLayoutOrientation {
+            layoutOrientation = settings.candidateLayoutOrientation
+        }
+        if !hasManualFontSizeOverride && fontSize != settings.candidateFontSize {
+            fontSize = settings.candidateFontSize
+        }
+    }
 }
 
 /// Keep the view mounted so measuring the next frame never sees an empty transition.
@@ -45,7 +73,10 @@ public struct CandidatePanelRootView: View {
             onPageDelta: state.onPageDelta,
             onCandidateAction: state.onCandidateAction,
             isCandidatePinned: state.isCandidatePinned,
-            viewportWidth: state.viewportWidth
+            viewportWidth: state.viewportWidth,
+            isTraditional: state.isTraditional,
+            layoutOrientation: state.layoutOrientation,
+            fontSize: state.fontSize
         )
         .transaction { $0.animation = nil }
     }
@@ -121,6 +152,8 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
     private var placement = CandidatePanelPlacement()
     private var sessionMinWidth: CGFloat = 0
     private var lastMeasuredViewMode: CandidateViewMode? = nil
+    private var lastMeasuredOrientation: CandidateLayoutOrientation? = nil
+    private var lastMeasuredFontSize: CGFloat? = nil
     private var presentationGeneration = 0
     private var fadeTimer: DispatchSourceTimer?
     private var fadeCompletion: (() -> Void)?
@@ -132,7 +165,8 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
             backing: .buffered,
             defer: true
         )
-        
+
+        state.syncFromSettings()
         setupPanel()
     }
 
@@ -191,30 +225,45 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
         placement.reset()
         sessionMinWidth = 0
         lastMeasuredViewMode = nil
+        lastMeasuredOrientation = nil
+        lastMeasuredFontSize = nil
     }
 
     /// Measure the mounted content synchronously, then place it without a window resize animation.
     public func updatePosition(caretRect: NSRect) {
         let targetScreen = Self.targetScreen(for: caretRect)
         let screen = targetScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
-        if lastMeasuredViewMode != state.viewMode {
+        if lastMeasuredViewMode != state.viewMode
+            || lastMeasuredOrientation != state.layoutOrientation
+            || lastMeasuredFontSize != state.fontSize {
             sessionMinWidth = 0
             lastMeasuredViewMode = state.viewMode
+            lastMeasuredOrientation = state.layoutOrientation
+            lastMeasuredFontSize = state.fontSize
         }
         let maximum = max(1, min(640, screen.width - 26))
-        // Fit the actual candidate content, keeping width monotonic within the same composition session & view mode.
+        // Fit the actual candidate content, keeping width monotonic within the same composition layout & font size.
         let measuredWidth = CandidatePanelMetrics.contentWidth(
             candidates: state.candidates, viewMode: state.viewMode,
             pinyin: state.displayPinyin.isEmpty ? state.inputString : state.displayPinyin,
             mode: state.mode, currentPage: state.currentPage, totalPages: state.totalPages,
-            maximum: maximum
+            maximum: maximum,
+            layoutOrientation: state.layoutOrientation,
+            fontSize: state.fontSize
         )
         let width = min(maximum, max(sessionMinWidth, measuredWidth))
         sessionMinWidth = width
         if state.viewportWidth != width { state.viewportWidth = width }
         hostingView.layoutSubtreeIfNeeded()
-        let size = NSSize(width: width + CandidatePanelMetrics.outerPadding * 2,
-                          height: CandidatePanelMetrics.height(for: state.viewMode))
+        let size = NSSize(
+            width: width + CandidatePanelMetrics.outerPadding * 2,
+            height: CandidatePanelMetrics.height(
+                for: state.viewMode,
+                orientation: state.layoutOrientation,
+                candidateCount: state.candidates.count,
+                fontSize: state.fontSize
+            )
+        )
         let target = placement.frame(caret: caretRect, size: size, screen: screen)
         if frame != target { setFrame(target, display: true, animate: false) }
         CandidateGeometryDiagnostics.record([
@@ -225,6 +274,7 @@ public final class CandidatePanel: NSPanel, @unchecked Sendable {
 
     /// Fade only on a new presentation; typing and page changes update in place.
     public func show(caretRect: NSRect, clientWindowLevel: CGWindowLevel? = nil) {
+        state.syncFromSettings()
         StatusHUDHolder.shared.hideImmediately()
         let desiredLevel = CandidateCaretGeometry.effectiveWindowLevel(for: clientWindowLevel)
         if self.level != desiredLevel { self.level = desiredLevel }

@@ -121,6 +121,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         menu.addItem(updateItem)
         
         menu.addItem(NSMenuItem.separator())
+
+        let schemeRootItem = NSMenuItem(title: "输入方案：\(settings.pinyinScheme.title)", action: nil, keyEquivalent: "")
+        let schemeSubmenu = NSMenu(title: "输入方案")
+        for scheme in PinyinScheme.allCases {
+            let item = NSMenuItem(title: scheme.title, action: #selector(selectScheme(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = scheme.rawValue
+            item.state = settings.pinyinScheme == scheme ? .on : .off
+            schemeSubmenu.addItem(item)
+        }
+        schemeRootItem.submenu = schemeSubmenu
+        menu.addItem(schemeRootItem)
+
+        let traditionalItem = NSMenuItem(title: "输出繁体中文", action: #selector(toggleTraditional), keyEquivalent: "f")
+        traditionalItem.keyEquivalentModifierMask = [.control, .shift]
+        traditionalItem.target = self
+        traditionalItem.state = settings.isTraditionalChineseEnabled ? .on : .off
+        menu.addItem(traditionalItem)
         
         let panguItem = NSMenuItem(title: "盘古之白自动空格", action: #selector(togglePangu), keyEquivalent: "")
         panguItem.target = self
@@ -140,10 +158,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
         let fuzzyItem = NSMenuItem(title: "模糊音智能纠错", action: #selector(toggleFuzzy), keyEquivalent: "")
         fuzzyItem.target = self
+        fuzzyItem.isEnabled = settings.pinyinScheme != .wubi86
         fuzzyItem.state = settings.isFuzzyPinyinEnabled ? .on : .off
         menu.addItem(fuzzyItem)
+
+        let terminalAutoEnglishItem = NSMenuItem(title: "终端与编辑器默认英文", action: #selector(toggleAutoEnglishInTerminal), keyEquivalent: "")
+        terminalAutoEnglishItem.target = self
+        terminalAutoEnglishItem.state = settings.isAutoEnglishInTerminalEnabled ? .on : .off
+        menu.addItem(terminalAutoEnglishItem)
+
+        let orientationItem = NSMenuItem(title: "候选竖排布局", action: #selector(toggleLayoutOrientation), keyEquivalent: "")
+        orientationItem.target = self
+        orientationItem.state = (settings.candidateLayoutOrientation == .vertical) ? .on : .off
+        menu.addItem(orientationItem)
         
-        let scrollItem = NSMenuItem(title: "默认使用卷轴展开模式 (14词)", action: #selector(toggleDefaultViewMode), keyEquivalent: "")
+        let scrollItem = NSMenuItem(title: "默认使用卷轴展开模式", action: #selector(toggleDefaultViewMode), keyEquivalent: "")
         scrollItem.target = self
         scrollItem.state = (settings.defaultViewMode == .scroll) ? .on : .off
         menu.addItem(scrollItem)
@@ -192,6 +221,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         PreferencesWindowController.shared.showWindow()
     }
     
+    @objc private func selectScheme(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let scheme = PinyinScheme(rawValue: raw) else { return }
+        AetherSettings.shared.pinyinScheme = scheme
+    }
+
+    @objc private func toggleTraditional() {
+        AetherSettings.shared.isTraditionalChineseEnabled.toggle()
+    }
+
     @objc private func togglePangu() {
         AetherSettings.shared.isPanguSpacingEnabled.toggle()
     }
@@ -206,6 +245,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
     @objc private func toggleFuzzy() {
         AetherSettings.shared.isFuzzyPinyinEnabled.toggle()
+    }
+
+    @objc private func toggleAutoEnglishInTerminal() {
+        AetherSettings.shared.isAutoEnglishInTerminalEnabled.toggle()
+    }
+
+    @objc private func toggleLayoutOrientation() {
+        let cur = AetherSettings.shared.candidateLayoutOrientation
+        AetherSettings.shared.candidateLayoutOrientation = (cur == .vertical ? .horizontal : .vertical)
     }
     
     @objc private func toggleDefaultViewMode() {
