@@ -34,6 +34,9 @@ targets:
       - Resources/characters-source.json
       - Resources/Unihan-LICENSE.txt
       - Resources/emoji.json
+      - Resources/lm.json
+      - Resources/english_lexicon.json
+      - Resources/chaizi.json
       - Resources/Unicode-LICENSE.txt
       - path: Resources/Wubi86
         type: folder

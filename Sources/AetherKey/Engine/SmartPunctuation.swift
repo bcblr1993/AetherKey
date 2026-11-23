@@ -1,5 +1,18 @@
 import Foundation
 
+/// Output produced by context-aware punctuation conversion, supporting cursor back-step for auto-paired brackets/quotes.
+public struct PunctuationOutput: Sendable, Equatable {
+    public let text: String
+    public let cursorBackOffset: Int
+    public let autoPairedCloseChar: Character?
+
+    public init(text: String, cursorBackOffset: Int = 0, autoPairedCloseChar: Character? = nil) {
+        self.text = text
+        self.cursorBackOffset = cursorBackOffset
+        self.autoPairedCloseChar = autoPairedCloseChar
+    }
+}
+
 /// Smart punctuation engine: Converts ASCII punctuation to Chinese typographic counterparts,
 /// with stateful quote pairing (“” / ‘’) and intelligent decimal/colon retention when typing numbers.
 public final class SmartPunctuation: @unchecked Sendable {
@@ -129,6 +142,114 @@ public final class SmartPunctuation: @unchecked Sendable {
         return punctuationMap[char] ?? String(char)
     }
     
+    /// Context-aware punctuation conversion:
+    /// - Keeps half-width `.`, `:`, `/`, `_`, `@` inside URLs, emails, domains, file paths, identifiers, and numbers.
+    /// - When `autoPairEnabled` is true, emits paired Chinese brackets/quotes with `cursorBackOffset = 1`.
+    public func convertWithContext(
+        char: Character,
+        precedingText: String,
+        autoPairEnabled: Bool
+    ) -> PunctuationOutput {
+        if char == "@" {
+            lock.lock(); lastConvertedPair = nil; lock.unlock()
+            return PunctuationOutput(text: "@", cursorBackOffset: 0, autoPairedCloseChar: nil)
+        }
+
+        if (char == "." || char == ":" || char == "/" || char == "_"),
+           Self.shouldKeepHalfWidth(char: char, precedingText: precedingText) {
+            lock.lock(); lastConvertedPair = nil; lock.unlock()
+            return PunctuationOutput(text: String(char), cursorBackOffset: 0, autoPairedCloseChar: nil)
+        }
+
+        if autoPairEnabled {
+            switch char {
+            case "(":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "（）", cursorBackOffset: 1, autoPairedCloseChar: "）")
+            case "[":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "【】", cursorBackOffset: 1, autoPairedCloseChar: "】")
+            case "{":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "「」", cursorBackOffset: 1, autoPairedCloseChar: "」")
+            case "<":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "《》", cursorBackOffset: 1, autoPairedCloseChar: "》")
+            case "\"":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "“”", cursorBackOffset: 1, autoPairedCloseChar: "”")
+            case "'":
+                lock.lock(); lastConvertedPair = nil; lock.unlock()
+                return PunctuationOutput(text: "‘’", cursorBackOffset: 1, autoPairedCloseChar: "’")
+            default:
+                break
+            }
+        }
+
+        let converted = convert(char: char, precedingChar: precedingText.last)
+        return PunctuationOutput(text: converted, cursorBackOffset: 0, autoPairedCloseChar: nil)
+    }
+
+    private static func shouldKeepHalfWidth(char: Character, precedingText: String) -> Bool {
+        if (char == "." || char == ":"), let last = precedingText.last, last.isNumber {
+            return true
+        }
+
+        let trailingSegment = trailingASCIIToken(in: precedingText)
+        guard !trailingSegment.isEmpty else { return false }
+
+        let lower = trailingSegment.lowercased()
+        if lower.contains("http://") || lower.contains("https://") || lower.contains("www.") || lower.contains("://") {
+            return true
+        }
+
+        if char == "/", isURLSchemePrefixBeforeSlash(lower) {
+            return true
+        }
+
+        if let atIndex = trailingSegment.lastIndex(of: "@"),
+           atIndex > trailingSegment.startIndex,
+           trailingSegment.index(after: atIndex) < trailingSegment.endIndex {
+            return true
+        }
+
+        return trailingIdentifierCount(in: precedingText) >= 2
+    }
+
+    private static func trailingASCIIToken(in text: String) -> String {
+        var chars: [Character] = []
+        for ch in text.reversed() {
+            guard ch.isASCII, !ch.isWhitespace, !ch.isNewline else { break }
+            chars.append(ch)
+        }
+        return String(chars.reversed())
+    }
+
+    private static func trailingIdentifierCount(in text: String) -> Int {
+        var count = 0
+        for ch in text.reversed() {
+            guard ch.isASCII else { break }
+            if ch.isLetter || ch.isNumber || ch == "." || ch == "_" || ch == "/" || ch == "-" {
+                count += 1
+            } else {
+                break
+            }
+        }
+        return count
+    }
+
+    private static func isURLSchemePrefixBeforeSlash(_ lowerToken: String) -> Bool {
+        if lowerToken.hasSuffix(":/") {
+            let prefix = lowerToken.dropLast(2)
+            return prefix.count >= 2 && prefix.allSatisfy { $0.isASCII && $0.isLetter }
+        }
+        if lowerToken.hasSuffix(":") {
+            let prefix = lowerToken.dropLast(1)
+            return prefix.count >= 2 && prefix.allSatisfy { $0.isASCII && $0.isLetter }
+        }
+        return false
+    }
+
     public func isPunctuation(_ char: Character) -> Bool {
         return punctuationMap[char] != nil
     }

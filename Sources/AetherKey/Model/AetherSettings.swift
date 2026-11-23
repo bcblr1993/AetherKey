@@ -59,6 +59,89 @@ public enum AppDefaultInputMode: String, CaseIterable, Codable, Sendable, Identi
     }
 }
 
+/// Emoji candidate suggestion behavior.
+public enum EmojiSuggestionStyle: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case smartPhrase
+    case all
+    case off
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .smartPhrase: return "仅词组联想（推荐）"
+        case .all: return "增强（含单字）"
+        case .off: return "关闭"
+        }
+    }
+}
+
+/// Square bracket key behavior when candidates are visible.
+public enum BracketKeyBehavior: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case wordToChar
+    case paging
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .wordToChar: return "以词定字"
+        case .paging: return "候选翻页"
+        }
+    }
+}
+
+/// Shift key input mode switching policy.
+public enum ShiftSwitchMode: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case both
+    case leftOnly
+    case rightOnly
+    case disabled
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .both: return "左右 Shift 均可"
+        case .leftOnly: return "仅左 Shift"
+        case .rightOnly: return "仅右 Shift"
+        case .disabled: return "禁用 Shift 切换"
+        }
+    }
+}
+
+/// Caps Lock key behavior.
+public enum CapsLockSwitchMode: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case systemDefault
+    case toggleChineseEnglish
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .systemDefault: return "系统默认（大写锁定）"
+        case .toggleChineseEnglish: return "短按切换中英文"
+        }
+    }
+}
+
+/// Action to take on active composing buffer when switching to English mode.
+public enum SwitchToEnglishBufferAction: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case commitRaw
+    case commitSelected
+    case clear
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .commitRaw: return "提交已输入字母"
+        case .commitSelected: return "上屏当前候选词"
+        case .clear: return "清空当前编码"
+        }
+    }
+}
+
 /// Centralized user preferences and runtime configuration for AetherKey.
 public final class AetherSettings: ObservableObject, @unchecked Sendable {
     public static let shared = AetherSettings()
@@ -81,6 +164,18 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         static let candidateFontSize = "aetherkey.settings.candidateFontSize"
         static let candidateLayoutOrientation = "aetherkey.settings.candidateLayoutOrientation"
         static let customAppDefaultModes = "aetherkey.settings.customAppDefaultModes"
+        static let emojiSuggestionStyle = "aetherkey.settings.emojiSuggestionStyle"
+        static let englishMix = "aetherkey.settings.englishMix"
+        static let autoPairPunctuation = "aetherkey.settings.autoPairPunctuation"
+        static let commaPeriodPaging = "aetherkey.settings.commaPeriodPaging"
+        static let semicolonSecondCandidate = "aetherkey.settings.semicolonSecondCandidate"
+        static let bracketKeyBehavior = "aetherkey.settings.bracketKeyBehavior"
+        static let shiftSwitchMode = "aetherkey.settings.shiftSwitchMode"
+        static let capsLockSwitchMode = "aetherkey.settings.capsLockSwitchMode"
+        static let switchToEnglishBufferAction = "aetherkey.settings.switchToEnglishBufferAction"
+        static let clipboardHistory = "aetherkey.settings.clipboardHistory"
+        static let syncFolderPath = "aetherkey.settings.syncFolderPath"
+        static let autoSync = "aetherkey.settings.autoSync"
     }
     
     @Published public var isFourArrowSelectionEnabled: Bool {
@@ -167,8 +262,56 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
             defaults.set(rawMap, forKey: Keys.customAppDefaultModes)
         }
     }
+
+    @Published public var emojiSuggestionStyle: EmojiSuggestionStyle {
+        didSet { defaults.set(emojiSuggestionStyle.rawValue, forKey: Keys.emojiSuggestionStyle) }
+    }
+
+    @Published public var isEnglishMixEnabled: Bool {
+        didSet { defaults.set(isEnglishMixEnabled, forKey: Keys.englishMix) }
+    }
+
+    @Published public var isAutoPairPunctuationEnabled: Bool {
+        didSet { defaults.set(isAutoPairPunctuationEnabled, forKey: Keys.autoPairPunctuation) }
+    }
+
+    @Published public var isCommaPeriodPagingEnabled: Bool {
+        didSet { defaults.set(isCommaPeriodPagingEnabled, forKey: Keys.commaPeriodPaging) }
+    }
+
+    @Published public var isSemicolonSecondCandidateEnabled: Bool {
+        didSet { defaults.set(isSemicolonSecondCandidateEnabled, forKey: Keys.semicolonSecondCandidate) }
+    }
+
+    @Published public var bracketKeyBehavior: BracketKeyBehavior {
+        didSet { defaults.set(bracketKeyBehavior.rawValue, forKey: Keys.bracketKeyBehavior) }
+    }
+
+    @Published public var shiftSwitchMode: ShiftSwitchMode {
+        didSet { defaults.set(shiftSwitchMode.rawValue, forKey: Keys.shiftSwitchMode) }
+    }
+
+    @Published public var capsLockSwitchMode: CapsLockSwitchMode {
+        didSet { defaults.set(capsLockSwitchMode.rawValue, forKey: Keys.capsLockSwitchMode) }
+    }
+
+    @Published public var switchToEnglishBufferAction: SwitchToEnglishBufferAction {
+        didSet { defaults.set(switchToEnglishBufferAction.rawValue, forKey: Keys.switchToEnglishBufferAction) }
+    }
+
+    @Published public var isClipboardHistoryEnabled: Bool {
+        didSet { defaults.set(isClipboardHistoryEnabled, forKey: Keys.clipboardHistory) }
+    }
+
+    @Published public var syncFolderPath: String {
+        didSet { defaults.set(syncFolderPath, forKey: Keys.syncFolderPath) }
+    }
+
+    @Published public var isAutoSyncEnabled: Bool {
+        didSet { defaults.set(isAutoSyncEnabled, forKey: Keys.autoSync) }
+    }
     
-    init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.isFourArrowSelectionEnabled = defaults.bool(forKey: Keys.fourArrowSelection)
         self.isEnglishPunctuationEnabled = defaults.bool(forKey: Keys.englishPunctuation)
@@ -181,13 +324,25 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
             defaults.set(true, forKey: Keys.smartPunctuation)
         }
         if defaults.object(forKey: Keys.fuzzyPinyin) == nil {
-            defaults.set(true, forKey: Keys.fuzzyPinyin)
+            defaults.set(false, forKey: Keys.fuzzyPinyin)
         }
         if defaults.object(forKey: Keys.autoEnglishInTerminal) == nil {
             defaults.set(true, forKey: Keys.autoEnglishInTerminal)
         }
         if defaults.object(forKey: Keys.userLearning) == nil {
             defaults.set(true, forKey: Keys.userLearning)
+        }
+        if defaults.object(forKey: Keys.englishMix) == nil {
+            defaults.set(true, forKey: Keys.englishMix)
+        }
+        if defaults.object(forKey: Keys.autoPairPunctuation) == nil {
+            defaults.set(true, forKey: Keys.autoPairPunctuation)
+        }
+        if defaults.object(forKey: Keys.commaPeriodPaging) == nil {
+            defaults.set(true, forKey: Keys.commaPeriodPaging)
+        }
+        if defaults.object(forKey: Keys.clipboardHistory) == nil {
+            defaults.set(true, forKey: Keys.clipboardHistory)
         }
         
         self.isPanguSpacingEnabled = defaults.bool(forKey: Keys.panguSpacing)
@@ -227,6 +382,29 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         } else {
             self.customAppDefaultModes = [:]
         }
+
+        let emojiRaw = defaults.string(forKey: Keys.emojiSuggestionStyle) ?? EmojiSuggestionStyle.smartPhrase.rawValue
+        self.emojiSuggestionStyle = EmojiSuggestionStyle(rawValue: emojiRaw) ?? .smartPhrase
+        self.isEnglishMixEnabled = defaults.bool(forKey: Keys.englishMix)
+        self.isAutoPairPunctuationEnabled = defaults.bool(forKey: Keys.autoPairPunctuation)
+        self.isCommaPeriodPagingEnabled = defaults.bool(forKey: Keys.commaPeriodPaging)
+        self.isSemicolonSecondCandidateEnabled = defaults.bool(forKey: Keys.semicolonSecondCandidate)
+
+        let bracketRaw = defaults.string(forKey: Keys.bracketKeyBehavior) ?? BracketKeyBehavior.wordToChar.rawValue
+        self.bracketKeyBehavior = BracketKeyBehavior(rawValue: bracketRaw) ?? .wordToChar
+
+        let shiftRaw = defaults.string(forKey: Keys.shiftSwitchMode) ?? ShiftSwitchMode.both.rawValue
+        self.shiftSwitchMode = ShiftSwitchMode(rawValue: shiftRaw) ?? .both
+
+        let capsRaw = defaults.string(forKey: Keys.capsLockSwitchMode) ?? CapsLockSwitchMode.systemDefault.rawValue
+        self.capsLockSwitchMode = CapsLockSwitchMode(rawValue: capsRaw) ?? .systemDefault
+
+        let switchActionRaw = defaults.string(forKey: Keys.switchToEnglishBufferAction) ?? SwitchToEnglishBufferAction.commitRaw.rawValue
+        self.switchToEnglishBufferAction = SwitchToEnglishBufferAction(rawValue: switchActionRaw) ?? .commitRaw
+
+        self.isClipboardHistoryEnabled = defaults.bool(forKey: Keys.clipboardHistory)
+        self.syncFolderPath = defaults.string(forKey: Keys.syncFolderPath) ?? ""
+        self.isAutoSyncEnabled = defaults.bool(forKey: Keys.autoSync)
     }
 
     public func appDefaultMode(for bundleIdentifier: String) -> AppDefaultInputMode? {
@@ -256,7 +434,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         isSmartPunctuationEnabled = true
         isEnglishPunctuationEnabled = false
         isTraditionalChineseEnabled = false
-        isFuzzyPinyinEnabled = true
+        isFuzzyPinyinEnabled = false
         fuzzyPinyinRules = .defaultRules
         isAutoEnglishInTerminalEnabled = true
         isUserLearningEnabled = true
@@ -265,6 +443,18 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         candidateFontSize = 15
         candidateLayoutOrientation = .horizontal
         customAppDefaultModes = [:]
+        emojiSuggestionStyle = .smartPhrase
+        isEnglishMixEnabled = true
+        isAutoPairPunctuationEnabled = true
+        isCommaPeriodPagingEnabled = true
+        isSemicolonSecondCandidateEnabled = false
+        bracketKeyBehavior = .wordToChar
+        shiftSwitchMode = .both
+        capsLockSwitchMode = .systemDefault
+        switchToEnglishBufferAction = .commitRaw
+        isClipboardHistoryEnabled = true
+        syncFolderPath = ""
+        isAutoSyncEnabled = false
     }
 
     private static func clampedPageSize(_ value: Int) -> Int {
