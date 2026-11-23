@@ -339,7 +339,7 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
             defaults.set(true, forKey: Keys.autoPairPunctuation)
         }
         if defaults.object(forKey: Keys.commaPeriodPaging) == nil {
-            defaults.set(true, forKey: Keys.commaPeriodPaging)
+            defaults.set(false, forKey: Keys.commaPeriodPaging)
         }
         if defaults.object(forKey: Keys.clipboardHistory) == nil {
             defaults.set(true, forKey: Keys.clipboardHistory)
@@ -390,8 +390,8 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         self.isCommaPeriodPagingEnabled = defaults.bool(forKey: Keys.commaPeriodPaging)
         self.isSemicolonSecondCandidateEnabled = defaults.bool(forKey: Keys.semicolonSecondCandidate)
 
-        let bracketRaw = defaults.string(forKey: Keys.bracketKeyBehavior) ?? BracketKeyBehavior.wordToChar.rawValue
-        self.bracketKeyBehavior = BracketKeyBehavior(rawValue: bracketRaw) ?? .wordToChar
+        let bracketRaw = defaults.string(forKey: Keys.bracketKeyBehavior) ?? BracketKeyBehavior.paging.rawValue
+        self.bracketKeyBehavior = BracketKeyBehavior(rawValue: bracketRaw) ?? .paging
 
         let shiftRaw = defaults.string(forKey: Keys.shiftSwitchMode) ?? ShiftSwitchMode.both.rawValue
         self.shiftSwitchMode = ShiftSwitchMode(rawValue: shiftRaw) ?? .both
@@ -446,9 +446,9 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         emojiSuggestionStyle = .smartPhrase
         isEnglishMixEnabled = true
         isAutoPairPunctuationEnabled = true
-        isCommaPeriodPagingEnabled = true
+        isCommaPeriodPagingEnabled = false
         isSemicolonSecondCandidateEnabled = false
-        bracketKeyBehavior = .wordToChar
+        bracketKeyBehavior = .paging
         shiftSwitchMode = .both
         capsLockSwitchMode = .systemDefault
         switchToEnglishBufferAction = .commitRaw

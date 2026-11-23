@@ -209,13 +209,14 @@ public enum DoublePinyin {
             fallback.append(Candidate(text: raw, comment: "英", consumedInputLength: raw.count))
             return fallback
         }
-        // Preserve genuine layout collisions (for example lo/luo) instead of dropping rare readings.
+        // Preserve genuine layout collisions (for example lo/luo, Microsoft jv -> ju/jue)
+        // instead of dropping rare readings, and rank across variants via LanguageModel.
         var variants: [[String]] = [[]]
         for token in tokens {
-            variants = Array(variants.flatMap { prefix in token.readings.map { prefix + [$0] } }.prefix(32))
+            variants = Array(variants.flatMap { prefix in token.readings.map { prefix + [$0] } }.prefix(16))
         }
-        var result: [Candidate] = []; var seen = Set<String>()
-        for syllables in variants {
+
+        if variants.count <= 1, let syllables = variants.first {
             let decoded = syllables.joined(separator: "'")
             var boundaries: [(end: Int, raw: Int)] = []; var end = 0
             for (index, syllable) in syllables.enumerated() {
@@ -223,6 +224,7 @@ public enum DoublePinyin {
                 boundaries.append((end + (index < tokens.count - 1 ? 1 : 0), tokens[index].rawEnd))
                 if index < tokens.count - 1 { end += 1 }
             }
+            var result: [Candidate] = []; var seen = Set<String>()
             for candidate in PinyinEngine.shared.query(rawInput: decoded, precedingText: precedingText) where candidate.comment != "英" {
                 let consumed = candidate.consumedInputLength > 0 ? candidate.consumedInputLength : decoded.count
                 guard let boundary = boundaries.first(where: { $0.end >= consumed }), seen.insert(candidate.text).inserted else { continue }
@@ -230,9 +232,112 @@ public enum DoublePinyin {
                                         pinyin: String(decoded.prefix(consumed)), isEmoji: candidate.isEmoji,
                                         consumedInputLength: boundary.raw))
             }
+            if stripped.count >= 3 {
+                for word in abbreviationWords(for: stripped) where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+                    result.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
+                }
+            }
+            result.append(Candidate(text: raw, comment: "英", consumedInputLength: raw.count))
+            return result
+        }
+
+        struct RankedEntry {
+            let tier: Int
+            let primaryScore: Double
+            let rankInVariant: Int
+            let variantIndex: Int
+            let candidate: Candidate
+        }
+
+        let lm = LanguageModel.shared
+        let userLexicon = UserLexicon.shared
+        let isSingleToken = (tokens.count == 1)
+        var ranked: [RankedEntry] = []
+
+        for (variantIdx, syllables) in variants.enumerated() {
+            let decoded = syllables.joined(separator: "'")
+            var boundaries: [(end: Int, raw: Int)] = []; var end = 0
+            for (index, syllable) in syllables.enumerated() {
+                end += syllable.count
+                boundaries.append((end + (index < tokens.count - 1 ? 1 : 0), tokens[index].rawEnd))
+                if index < tokens.count - 1 { end += 1 }
+            }
+            let contextMatches = precedingText.isEmpty
+                ? Set<String>()
+                : Set(PinyinContext.continuations(input: decoded, precedingText: precedingText))
+            let rawCandidates = PinyinEngine.shared.query(rawInput: decoded, precedingText: precedingText)
+            for (candIdx, candidate) in rawCandidates.enumerated() where candidate.comment != "英" {
+                let consumed = candidate.consumedInputLength > 0 ? candidate.consumedInputLength : decoded.count
+                guard let boundary = boundaries.first(where: { $0.end >= consumed }) else { continue }
+                let readingPrefix = String(decoded.prefix(consumed))
+                let mapped = Candidate(
+                    text: candidate.text,
+                    comment: candidate.comment,
+                    pinyin: readingPrefix,
+                    isEmoji: candidate.isEmoji,
+                    consumedInputLength: boundary.raw
+                )
+                let isFullInput = (boundary.raw == raw.count)
+                let canonical = mapped.canonicalText
+                let weight = lm.wordWeight(for: candidate.text)
+
+                let tier: Int
+                let primaryScore: Double
+                if candidate.isEmoji {
+                    tier = (!isSingleToken && candIdx <= 2) ? 4 : (isSingleToken ? 4 : 7)
+                    primaryScore = isSingleToken ? (420.0 - Double(candIdx)) : Double(100 - candIdx)
+                } else if isFullInput && userLexicon.isPinned(canonical, for: readingPrefix) {
+                    tier = 0
+                    primaryScore = weight
+                } else if isFullInput && userLexicon.isExplicitPreference(canonical, for: readingPrefix) {
+                    tier = 1
+                    primaryScore = weight
+                } else if isFullInput && contextMatches.contains(candidate.text) {
+                    tier = 2
+                    primaryScore = weight
+                } else if isFullInput && userLexicon.selectionCount(canonical, for: readingPrefix) > 0 {
+                    tier = 3
+                    primaryScore = weight + log1p(Double(userLexicon.selectionCount(canonical, for: readingPrefix))) * 25.0
+                } else if isFullInput && (isSingleToken || candidate.text.count >= 2) {
+                    tier = 4
+                    if candidate.text.count == 1 {
+                        // Preserve reading-primary ordering from PinyinLexicon while interleaving variants by LM weight
+                        primaryScore = weight - Double(candIdx) * 25.0
+                    } else {
+                        primaryScore = weight - Double(candIdx) * 1.5
+                    }
+                } else if !isFullInput && candidate.text.count >= 2 {
+                    tier = 5
+                    primaryScore = Double(boundary.raw) * 1000.0 + weight
+                } else {
+                    tier = 6
+                    primaryScore = weight
+                }
+
+                ranked.append(RankedEntry(
+                    tier: tier,
+                    primaryScore: primaryScore,
+                    rankInVariant: candIdx,
+                    variantIndex: variantIdx,
+                    candidate: mapped
+                ))
+            }
+        }
+
+        ranked.sort { lhs, rhs in
+            if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
+            if lhs.primaryScore != rhs.primaryScore { return lhs.primaryScore > rhs.primaryScore }
+            if lhs.rankInVariant != rhs.rankInVariant { return lhs.rankInVariant < rhs.rankInVariant }
+            return lhs.variantIndex < rhs.variantIndex
+        }
+
+        var result: [Candidate] = []; var seen = Set<String>()
+        result.reserveCapacity(ranked.count + 8)
+        for entry in ranked where seen.insert(entry.candidate.text).inserted {
+            result.append(entry.candidate)
         }
         if stripped.count >= 3 {
-            for word in abbreviationWords(for: stripped) where !UserLexicon.shared.isForgotten(word, for: stripped) && seen.insert(word).inserted {
+            for word in abbreviationWords(for: stripped) where !userLexicon.isForgotten(word, for: stripped) && seen.insert(word).inserted {
                 result.append(Candidate(text: word, pinyin: stripped, consumedInputLength: raw.count))
             }
         }

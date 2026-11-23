@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import InputMethodKit
 
 /// Global shared candidate panel instance
@@ -15,9 +16,15 @@ public enum CandidatePanelHolder {
 public final class AetherInputController: IMKInputController, @unchecked Sendable {
 
     // MARK: - State Management
+    @MainActor public private(set) static weak var currentActive: AetherInputController?
+    private static let syntheticEventTag: Int64 = 0x41455448
+
     private var compositionScheme: PinyinScheme = .full
     private var isCalculatorComposition: Bool {
         compositionScheme != .wubi86 && buffer.hasPrefix("v") && (compositionScheme == .full || buffer.dropFirst().first?.isNumber == true)
+    }
+    private var isUModeComposition: Bool {
+        compositionScheme == .full && buffer.hasPrefix("u") && buffer.count > 1
     }
     private var buffer: String = ""
     private var rawBuffer: String = ""
@@ -37,19 +44,25 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     private weak var activeClient: AnyObject? = nil
     private var menuTargetBundleIdentifier: String? = nil
 
-    // Tracking context & Shift single-tap
+    // Tracking context, Shift single-tap, Caps Lock & auto-paired punctuation
     private var shiftPressTime: TimeInterval = 0
     private var shiftSoleModifier: Bool = false
     private var shiftDisqualifiedUntilAllReleased: Bool = false
+    private var shiftPressKeyCode: UInt16 = 0
+    private var lastCapsLockOn: Bool = false
     private var lastCommittedChar: Character? = nil
     private var compositionPrecedingChar: Character? = nil
     private var lastLearnedCommits: [(pinyin: String, word: String)] = []
     private var lastCommitWasSmartPunctuation: Bool = false
+    private var lastAutoPairedCloseChar: Character? = nil
     private var compositionContext = ""
     private var committedContext = ""
     private var committedContextEnd: Int?
     private var lastCompositionCaretRect: NSRect?
     private var compositionGeneration: Int = 0
+
+    internal var caretBacktrackHandler: (() -> Bool)? = nil
+    internal var forwardDeleteHandler: (() -> Bool)? = nil
 
     private static let manualModeLock = NSLock()
     nonisolated(unsafe) private static var manualModeOverrides: [String: InputMode] = [:]
@@ -63,9 +76,13 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     public override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
         self.activeClient = sender as AnyObject?
+        onMainActor { Self.currentActive = self }
         shiftPressTime = 0
         shiftSoleModifier = false
         shiftDisqualifiedUntilAllReleased = false
+        shiftPressKeyCode = 0
+        lastCapsLockOn = NSEvent.modifierFlags.contains(.capsLock)
+        lastAutoPairedCloseChar = nil
         if let overridden = Self.savedManualMode(for: sender) {
             inputMode = overridden
         } else {
@@ -78,16 +95,24 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         shiftPressTime = 0
         shiftSoleModifier = false
         shiftDisqualifiedUntilAllReleased = false
+        shiftPressKeyCode = 0
         committedContext = ""
         committedContextEnd = nil
         lastCommittedChar = nil
         compositionPrecedingChar = nil
         lastLearnedCommits.removeAll()
         lastCommitWasSmartPunctuation = false
+        lastAutoPairedCloseChar = nil
         SmartPunctuation.shared.resetState()
+        onMainActor { [weak self] in
+            if let self, Self.currentActive === self {
+                Self.currentActive = nil
+            }
+            ToolboxPanelHolder.shared.dismiss()
+        }
         if !buffer.isEmpty {
             resetComposition(client: sender)
-        } else if inputMode == .vMode {
+        } else if inputMode == .vMode || inputMode == .uMode {
             inputMode = .chinese
         }
         super.deactivateServer(sender)
@@ -125,10 +150,16 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             modeTitle = "当前模式：英文 EN (单击 Shift 切换)"
         case .vMode:
             modeTitle = "当前模式：v 宏模式 (单击 Shift 切换)"
+        case .uMode:
+            modeTitle = "当前模式：u 拆字模式 (单击 Shift 切换)"
         }
         let modeItem = NSMenuItem(title: modeTitle, action: #selector(menuToggleInputMode), keyEquivalent: "")
         modeItem.target = self
         menu.addItem(modeItem)
+
+        let toolboxItem = NSMenuItem(title: "快捷工具箱（常用语 / 剪贴板 / 符号）…", action: #selector(menuOpenToolbox), keyEquivalent: "")
+        toolboxItem.target = self
+        menu.addItem(toolboxItem)
 
         if let bundleId = currentClientBundleIdentifier(from: activeClient) {
             menuTargetBundleIdentifier = bundleId
@@ -305,7 +336,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         let resolved = ContextDetector.shared.resolvedDefaultMode(for: bundleId, settings: AetherSettings.shared)
         if inputMode != resolved {
-            if !buffer.isEmpty && (resolved == .english || inputMode == .vMode) {
+            if !buffer.isEmpty && (resolved == .english || inputMode == .vMode || inputMode == .uMode) {
                 commitRaw(client: targetClient)
             }
             inputMode = resolved
@@ -339,6 +370,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
     }
 
+    @objc private func menuOpenToolbox() {
+        openToolbox(tab: nil, client: activeClient)
+    }
+
     public override func recognizedEvents(_ sender: Any!) -> Int {
         return Int(NSEvent.EventTypeMask.keyDown.rawValue | NSEvent.EventTypeMask.flagsChanged.rawValue)
     }
@@ -347,10 +382,11 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     public override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event = event else { return false }
         self.activeClient = sender as AnyObject?
+        onMainActor { Self.currentActive = self }
 
         synchronizeManualMode(client: sender)
 
-        // 1. Shift key tap detection for instantaneous Chinese / English toggle
+        // 1. Shift / Caps Lock tap detection for instantaneous Chinese / English toggle
         if event.type == .flagsChanged {
             handleFlagsChanged(event: event, client: sender)
             return false // Allow OS to receive flag changes
@@ -361,10 +397,23 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             return false
         }
 
+        // Do not clear auto-paired state or intercept synthetic cursor-backtrack / forward-delete events
+        if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == Self.syntheticEventTag {
+            return false
+        }
+
         // Shift or other key held while keyDown pressed -> disqualify pending Shift single-tap
         if shiftSoleModifier || event.modifierFlags.contains(.shift) {
             shiftSoleModifier = false
             shiftDisqualifiedUntilAllReleased = event.modifierFlags.contains(.shift)
+            shiftPressKeyCode = 0
+        }
+
+        let flags = event.modifierFlags
+        let bareModifiers = flags.intersection([.command, .control, .option, .shift])
+        let isPlainBackspace = (event.keyCode == 51 && flags.intersection([.command, .control, .option]).isEmpty)
+        if !isPlainBackspace {
+            lastAutoPairedCloseChar = nil
         }
 
         // Candidate management never commits the composition or reaches the host app.
@@ -379,8 +428,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         // Consume only Ctrl + period before generic shortcut pass-through. Do not
         // commit raw pinyin, move its caret, or rebuild the candidate panel.
-        if event.keyCode == 47,
-           event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.control] {
+        if event.keyCode == 47, bareModifiers == [.control] {
             if !event.isARepeat {
                 AetherSettings.shared.isEnglishPunctuationEnabled.toggle()
                 showPunctuationHUD(client: sender)
@@ -389,8 +437,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
 
         // Consume Ctrl + Shift + F for Simplified/Traditional toggle while preserving any active composition.
-        if event.keyCode == 3,
-           event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.control, .shift] {
+        if event.keyCode == 3, bareModifiers == [.control, .shift] {
             if !event.isARepeat {
                 AetherSettings.shared.isTraditionalChineseEnabled.toggle()
                 showScriptHUD(client: sender)
@@ -401,13 +448,41 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             return true
         }
 
+        // Consume Ctrl + Shift + V to toggle ToolboxPanel on Clipboard tab
+        if event.keyCode == 9, bareModifiers == [.control, .shift] {
+            if !event.isARepeat {
+                if !buffer.isEmpty {
+                    commitRaw(client: sender)
+                }
+                toggleToolbox(tab: .clipboard, client: sender)
+            }
+            return true
+        }
+
+        // Consume Ctrl + Shift + E to toggle ToolboxPanel on Symbols tab
+        if event.keyCode == 14, bareModifiers == [.control, .shift] {
+            if !event.isARepeat {
+                if !buffer.isEmpty {
+                    commitRaw(client: sender)
+                }
+                toggleToolbox(tab: .symbols, client: sender)
+            }
+            return true
+        }
+
         // Pass through Command / Control keyboard shortcuts instantly
-        let flags = event.modifierFlags
         if flags.contains(.command) || flags.contains(.control) {
             if !buffer.isEmpty {
                 commitRaw(client: sender)
             }
             return false
+        }
+
+        // Intercept navigation/commit keys while floating ToolboxPanel is visible and composition buffer is empty
+        if buffer.isEmpty && onMainActorSync({ ToolboxPanelHolder.shared.state.isVisible }) {
+            if handleToolboxKeyEvent(event, bareModifiers: bareModifiers) {
+                return true
+            }
         }
 
         // If in English mode and buffer is empty, instant pass-through while syncing context
@@ -490,18 +565,44 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 updateClientMarkedText(client: sender); renderPanel(client: sender)
                 return true
 
-            // Page Previous: '-' (27) or '[' (33) (without Shift, outside v-mode) or PageUp (116)
+            // Page Previous: '-' (27), PgUp (116), or ',' (43) when enabled
             case 27 where !flags.contains(.shift) && !isCalculatorComposition,
-                 33 where !flags.contains(.shift) && !isCalculatorComposition,
                  116:
                 flipPage(delta: -1, client: sender)
                 return true
+            case 43 where bareModifiers.isEmpty && !isCalculatorComposition && AetherSettings.shared.isCommaPeriodPagingEnabled:
+                flipPage(delta: -1, client: sender)
+                return true
 
-            // Page Next: '=' (24) or ']' (30) (without Shift, outside v-mode) or PageDown (121)
+            // Page Next: '=' (24), PgDn (121), or '.' (47) when enabled
             case 24 where !flags.contains(.shift) && !isCalculatorComposition,
-                 30 where !flags.contains(.shift) && !isCalculatorComposition,
                  121:
                 flipPage(delta: 1, client: sender)
+                return true
+            case 47 where bareModifiers.isEmpty && !isCalculatorComposition && AetherSettings.shared.isCommaPeriodPagingEnabled:
+                flipPage(delta: 1, client: sender)
+                return true
+
+            // Semicolon second-candidate quick selection
+            case 41 where bareModifiers.isEmpty
+                && !isCalculatorComposition
+                && AetherSettings.shared.isSemicolonSecondCandidateEnabled
+                && !(schemeUsesSemicolonFinal && acceptsSemicolonFinal):
+                let pageCands = candidatesForCurrentPage()
+                if pageCands.count >= 2 {
+                    commitCandidate(pageCands[1], client: sender)
+                    return true
+                }
+
+            // '[' (33) and ']' (30): word-to-char (以词定字) or paging
+            case 33 where bareModifiers.isEmpty && !isCalculatorComposition,
+                 30 where bareModifiers.isEmpty && !isCalculatorComposition:
+                let useFirst = (keyCode == 33)
+                if AetherSettings.shared.bracketKeyBehavior == .wordToChar,
+                   commitWordToChar(useFirst: useFirst, client: sender) {
+                    return true
+                }
+                flipPage(delta: useFirst ? -1 : 1, client: sender)
                 return true
 
             // Tab key (48): Sogou-style 卷轴 / 翻页模式切换 与 候选词流转
@@ -527,7 +628,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         // 3. State Machine: Buffer is Empty
         if buffer.isEmpty {
-            if keyCode == 51 && flags.intersection([.command, .control, .option]).isEmpty {
+            if isPlainBackspace {
                 for entry in lastLearnedCommits {
                     UserLexicon.shared.rollbackCommit(pinyin: entry.pinyin, word: entry.word)
                 }
@@ -536,16 +637,26 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     SmartPunctuation.shared.rollbackLastQuoteIfNeeded()
                     lastCommitWasSmartPunctuation = false
                 }
+                if let closeChar = lastAutoPairedCloseChar {
+                    lastAutoPairedCloseChar = nil
+                    if shouldTriggerPairedForwardDelete(closeChar: closeChar, client: sender) {
+                        _ = (forwardDeleteHandler ?? defaultForwardDelete)()
+                    }
+                }
                 lastCommittedChar = nil
                 if !committedContext.isEmpty {
                     committedContext.removeLast()
                 }
+                committedContextEnd = nil
                 return false
             }
             if [123, 124, 125, 126, 115, 119, 116, 121, 36, 76].contains(keyCode) {
                 lastLearnedCommits.removeAll()
                 lastCommitWasSmartPunctuation = false
+                lastAutoPairedCloseChar = nil
                 lastCommittedChar = nil
+                committedContext = ""
+                committedContextEnd = nil
                 return false
             }
         }
@@ -581,13 +692,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             if inputMode == .chinese,
                let firstChar = characters.first,
                SmartPunctuation.shared.isPunctuation(firstChar) {
-                let preceding = effectivePrecedingChar(client: sender)
-                let converted = AetherSettings.shared.usesChinesePunctuation
-                    ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: preceding)
-                    : String(firstChar)
-                lastLearnedCommits.removeAll()
-                lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
-                commitDirect(text: converted, client: sender)
+                commitSmartPunctuation(firstChar, client: sender)
                 return true
             }
 
@@ -647,12 +752,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             // Punctuation typed during composition: commit candidate first, then punctuation
             if SmartPunctuation.shared.isPunctuation(firstChar) {
                 commitCurrentSelection(client: sender)
-                let preceding = effectivePrecedingChar(client: sender)
-                let converted = AetherSettings.shared.usesChinesePunctuation
-                    ? SmartPunctuation.shared.convert(char: firstChar, precedingChar: preceding)
-                    : String(firstChar)
-                lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
-                commitDirect(text: converted, client: sender)
+                commitSmartPunctuation(firstChar, client: sender)
                 return true
             }
         }
@@ -664,13 +764,19 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     public override func inputText(_ string: String!, client sender: Any!) -> Bool {
         guard let string = string, !string.isEmpty else { return false }
         self.activeClient = sender as AnyObject?
+        onMainActor { Self.currentActive = self }
         synchronizeManualMode(client: sender)
 
         if inputMode == .english && buffer.isEmpty {
-            if let last = string.last, !string.unicodeScalars.allSatisfy(CharacterSet.controlCharacters.contains) {
+            let visible = string.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+            if !visible.isEmpty {
+                let visibleStr = String(String.UnicodeScalarView(visible))
                 lastLearnedCommits.removeAll()
                 lastCommitWasSmartPunctuation = false
-                lastCommittedChar = last
+                lastAutoPairedCloseChar = nil
+                lastCommittedChar = visibleStr.last
+                committedContext = String((committedContext + visibleStr).suffix(24))
+                committedContextEnd = nil
             }
             return false
         }
@@ -680,6 +786,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             let lowerChar = Character(char.lowercased())
             if buffer.isEmpty {
                 if char.isASCII && char.isLetter {
+                    lastAutoPairedCloseChar = nil
                     if char.isUppercase {
                         let preceding = effectivePrecedingChar(client: sender)
                         let formatted = AetherSettings.shared.isPanguSpacingEnabled
@@ -697,18 +804,15 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                         handled = true
                     }
                 } else if inputMode == .chinese && SmartPunctuation.shared.isPunctuation(char) {
-                    let preceding = effectivePrecedingChar(client: sender)
-                    let converted = AetherSettings.shared.usesChinesePunctuation
-                        ? SmartPunctuation.shared.convert(char: char, precedingChar: preceding)
-                        : String(char)
-                    lastLearnedCommits.removeAll()
-                    lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
-                    commitDirect(text: converted, client: sender)
+                    commitSmartPunctuation(char, client: sender)
                     handled = true
                 } else if !char.unicodeScalars.allSatisfy(CharacterSet.controlCharacters.contains) {
                     lastLearnedCommits.removeAll()
                     lastCommitWasSmartPunctuation = false
+                    lastAutoPairedCloseChar = nil
                     lastCommittedChar = char
+                    committedContext = String((committedContext + String(char)).suffix(24))
+                    committedContextEnd = nil
                 }
             } else {
                 if char == " " {
@@ -743,12 +847,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                     handled = true
                 } else if SmartPunctuation.shared.isPunctuation(char) {
                     commitCurrentSelection(client: sender)
-                    let preceding = effectivePrecedingChar(client: sender)
-                    let converted = AetherSettings.shared.usesChinesePunctuation
-                        ? SmartPunctuation.shared.convert(char: char, precedingChar: preceding)
-                        : String(char)
-                    lastCommitWasSmartPunctuation = AetherSettings.shared.usesChinesePunctuation
-                    commitDirect(text: converted, client: sender)
+                    commitSmartPunctuation(char, client: sender)
                     handled = true
                 }
             }
@@ -800,7 +899,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             compositionScheme = AetherSettings.shared.pinyinScheme
             candidateViewMode = AetherSettings.shared.defaultViewMode
             compositionContext = precedingContext(client: resolved)
-            committedContext = compositionContext
+            if !compositionContext.isEmpty && committedContext.isEmpty {
+                committedContext = compositionContext
+            }
             compositionPrecedingChar = effectivePrecedingChar(client: resolved)
             lastCompositionCaretRect = queryHostCaretRect(client: resolved)
             onMainActor { CandidatePanelHolder.shared.resetAnchor() }
@@ -830,7 +931,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private var compositionBoundaries: [Int] {
-        if compositionScheme == .wubi86 { return Array(1...max(1, buffer.count)) }
+        if compositionScheme == .wubi86 || isUModeComposition { return Array(1...max(1, buffer.count)) }
         if compositionScheme == .full || isCalculatorComposition {
             return PinyinEngine.shared.segmentTokens(rawInput: buffer).map(\.rawEndOffset)
         }
@@ -862,7 +963,8 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     private func manageCandidate(_ candidate: Candidate, action: CandidateAction, client: Any?) {
-        guard !isCalculatorComposition, !candidate.isEmoji, candidate.comment != "英" else { return }
+        guard !isCalculatorComposition, !isUModeComposition, !candidate.isEmoji, !candidate.isVMode,
+              candidate.comment != "英", candidate.comment != "常用语" else { return }
         let reading = candidateReading(candidate)
         let targetWord = candidate.canonicalText
         switch action {
@@ -873,13 +975,40 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         updateCandidates(client: client)
     }
 
-    // MARK: - Shift Single-Tap Toggle & Status HUD
+    // MARK: - Shift Single-Tap & Caps Lock Toggle + Status HUD
+    private func isAllowedShiftKeyCode(_ keyCode: UInt16) -> Bool {
+        switch AetherSettings.shared.shiftSwitchMode {
+        case .both:
+            return keyCode == 56 || keyCode == 60 || keyCode == 0
+        case .leftOnly:
+            return keyCode == 56
+        case .rightOnly:
+            return keyCode == 60
+        case .disabled:
+            return false
+        }
+    }
+
     private func handleFlagsChanged(event: NSEvent, client: Any?) {
+        if event.keyCode == 57 {
+            let isCapsOn = event.modifierFlags.contains(.capsLock)
+            let changed = (isCapsOn != lastCapsLockOn)
+            lastCapsLockOn = isCapsOn
+            shiftSoleModifier = false
+            shiftPressKeyCode = 0
+            let otherMods = event.modifierFlags.intersection([.shift, .command, .control, .option])
+            if changed && otherMods.isEmpty && AetherSettings.shared.capsLockSwitchMode == .toggleChineseEnglish {
+                toggleInputMode(client: client, showHUD: true)
+            }
+            return
+        }
+
         let relevant = event.modifierFlags.intersection([.shift, .command, .control, .option, .capsLock])
         if relevant == [.shift] {
             if !shiftDisqualifiedUntilAllReleased && !shiftSoleModifier {
                 shiftPressTime = CACurrentMediaTime()
                 shiftSoleModifier = true
+                shiftPressKeyCode = event.keyCode
             }
         } else if relevant.isEmpty {
             let duration = CACurrentMediaTime() - shiftPressTime
@@ -891,33 +1020,54 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
                 clickedDuringShift = leftAgo < elapsed || rightAgo < elapsed
             }
             if shiftSoleModifier && !shiftDisqualifiedUntilAllReleased && !clickedDuringShift
+                && isAllowedShiftKeyCode(shiftPressKeyCode)
                 && duration > 0.02 && duration < 0.35 {
                 toggleInputMode(client: client, showHUD: true)
             }
             shiftSoleModifier = false
             shiftDisqualifiedUntilAllReleased = false
             shiftPressTime = 0
+            shiftPressKeyCode = 0
         } else {
             shiftSoleModifier = false
             shiftDisqualifiedUntilAllReleased = true
             shiftPressTime = 0
+            shiftPressKeyCode = 0
         }
     }
 
     private func toggleInputMode(client: Any?, showHUD: Bool) {
         let targetClient = resolveClient(client)
         synchronizeManualMode(client: targetClient)
-        inputMode = (inputMode == .chinese ? .english : .chinese)
-        Self.saveManualMode(inputMode, for: targetClient)
-        if !buffer.isEmpty {
+        let switchingToEnglish = (inputMode != .english)
+        let targetMode: InputMode = switchingToEnglish ? .english : .chinese
+
+        if switchingToEnglish && !buffer.isEmpty {
+            switch AetherSettings.shared.switchToEnglishBufferAction {
+            case .commitRaw:
+                commitRaw(client: targetClient)
+            case .commitSelected:
+                commitCurrentSelection(client: targetClient)
+                if !buffer.isEmpty {
+                    resetComposition(client: targetClient)
+                }
+            case .clear:
+                resetComposition(client: targetClient)
+            }
+        } else if !switchingToEnglish && !buffer.isEmpty {
             commitRaw(client: targetClient)
         }
+
+        inputMode = targetMode
+        Self.saveManualMode(targetMode, for: targetClient)
+        lastAutoPairedCloseChar = nil
+
         if showHUD {
             let anchor = queryHostCaretRect(client: targetClient)
             let level = (targetClient as? IMKTextInput)?.windowLevel()
-            let badge = inputMode == .chinese ? "中" : "EN"
-            let title = inputMode == .chinese ? "中文输入" : "英文模式"
-            let isAccent = inputMode == .chinese
+            let badge = targetMode == .chinese ? "中" : "EN"
+            let title = targetMode == .chinese ? "中文输入" : "英文模式"
+            let isAccent = targetMode == .chinese
             onMainActor {
                 StatusHUDHolder.shared.show(badge: badge, title: title, isAccent: isAccent, anchorRect: anchor, clientWindowLevel: level)
             }
@@ -953,6 +1103,17 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             MainActor.assumeIsolated { block() }
         } else {
             Task { @MainActor in block() }
+        }
+    }
+
+    @discardableResult
+    private func onMainActorSync<T: Sendable>(_ block: @MainActor () -> T) -> T {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated { block() }
+        } else {
+            return DispatchQueue.main.sync {
+                MainActor.assumeIsolated { block() }
+            }
         }
     }
 
@@ -1005,10 +1166,23 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
     private func syncPassThroughContext(from event: NSEvent) {
         let keyCode = event.keyCode
-        if [51, 117, 123, 124, 125, 126, 115, 119, 116, 121, 36, 76].contains(keyCode) {
+        if keyCode == 51 {
             lastLearnedCommits.removeAll()
             lastCommitWasSmartPunctuation = false
             lastCommittedChar = nil
+            if !committedContext.isEmpty {
+                committedContext.removeLast()
+            }
+            committedContextEnd = nil
+            return
+        }
+        if [117, 123, 124, 125, 126, 115, 119, 116, 121, 36, 76].contains(keyCode) {
+            lastLearnedCommits.removeAll()
+            lastCommitWasSmartPunctuation = false
+            lastAutoPairedCloseChar = nil
+            lastCommittedChar = nil
+            committedContext = ""
+            committedContextEnd = nil
             return
         }
         guard let chars = event.characters, !chars.isEmpty,
@@ -1019,7 +1193,31 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         }
         lastLearnedCommits.removeAll()
         lastCommitWasSmartPunctuation = false
+        lastAutoPairedCloseChar = nil
         lastCommittedChar = last
+        committedContext = String((committedContext + chars).suffix(24))
+        committedContextEnd = nil
+    }
+
+    private func effectivePrecedingContext(client: Any?) -> String {
+        if let textInput = resolveClient(client) as? IMKTextInput {
+            let selection = textInput.selectedRange()
+            if selection.location == 0 {
+                if textInput.attributedSubstring(from: NSRange(location: 0, length: 0)) != nil {
+                    return ""
+                }
+            } else if selection.location != NSNotFound && selection.location > 0 {
+                let len = min(24, selection.location)
+                let start = selection.location - len
+                if let preceding = textInput.attributedSubstring(from: NSRange(location: start, length: len))?.string {
+                    return preceding
+                }
+                if let knownEnd = committedContextEnd, selection.location != knownEnd {
+                    return ""
+                }
+            }
+        }
+        return committedContext
     }
 
     private func effectivePrecedingChar(client: Any?) -> Character? {
@@ -1041,6 +1239,87 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             }
         }
         return lastCommittedChar
+    }
+
+    private func postSyntheticKey(_ keyCode: UInt16) -> Bool {
+        guard CGPreflightPostEventAccess() else { return false }
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            return false
+        }
+        down.flags = []
+        up.flags = []
+        down.setIntegerValueField(.eventSourceUserData, value: Self.syntheticEventTag)
+        up.setIntegerValueField(.eventSourceUserData, value: Self.syntheticEventTag)
+        down.post(tap: .cgAnnotatedSessionEventTap)
+        up.post(tap: .cgAnnotatedSessionEventTap)
+        return true
+    }
+
+    private func defaultCaretBacktrack() -> Bool {
+        postSyntheticKey(123)
+    }
+
+    private func defaultForwardDelete() -> Bool {
+        postSyntheticKey(117)
+    }
+
+    private func shouldTriggerPairedForwardDelete(closeChar: Character, client: Any?) -> Bool {
+        guard effectivePrecedingChar(client: client) != nil else { return false }
+        if let textInput = resolveClient(client) as? IMKTextInput {
+            let selection = textInput.selectedRange()
+            if selection.location != NSNotFound,
+               let nextText = textInput.attributedSubstring(from: NSRange(location: selection.location, length: 1))?.string,
+               let nextChar = nextText.first,
+               nextChar != closeChar {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func commitSmartPunctuation(_ char: Character, client: Any?) {
+        let targetClient = resolveClient(client)
+        lastLearnedCommits.removeAll()
+        lastAutoPairedCloseChar = nil
+
+        guard AetherSettings.shared.usesChinesePunctuation else {
+            lastCommitWasSmartPunctuation = false
+            commitDirect(text: String(char), client: targetClient)
+            return
+        }
+
+        let ctx = effectivePrecedingContext(client: targetClient)
+        let canAutoPair = AetherSettings.shared.isAutoPairPunctuationEnabled
+            && (caretBacktrackHandler != nil || CGPreflightPostEventAccess())
+        let output = SmartPunctuation.shared.convertWithContext(
+            char: char,
+            precedingText: ctx,
+            autoPairEnabled: canAutoPair
+        )
+
+        if output.cursorBackOffset > 0 {
+            commitDirect(text: output.text, client: targetClient)
+            let backtracked = (caretBacktrackHandler ?? defaultCaretBacktrack)()
+            if backtracked {
+                lastAutoPairedCloseChar = output.autoPairedCloseChar
+                if let opening = output.text.first {
+                    lastCommittedChar = opening
+                }
+                if committedContext.count >= output.cursorBackOffset {
+                    committedContext = String(committedContext.dropLast(output.cursorBackOffset))
+                }
+                committedContextEnd = nil
+                lastCommitWasSmartPunctuation = false
+            } else {
+                lastAutoPairedCloseChar = nil
+                lastCommitWasSmartPunctuation = false
+            }
+        } else {
+            lastCommitWasSmartPunctuation = true
+            commitDirect(text: output.text, client: targetClient)
+        }
     }
 
     private func queryHostCaretRect(client: Any?) -> NSRect? {
@@ -1096,6 +1375,25 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     }
 
     // MARK: - Candidate Engine & Pagination
+    private static func vModeToolboxAction(for buffer: String) -> (tab: ToolboxTab, title: String)? {
+        switch buffer.lowercased() {
+        case "vjb": return (.clipboard, "打开剪贴板工具箱")
+        case "vcy": return (.snippets, "打开常用语工具箱")
+        case "vbq": return (.symbols, "打开符号与表情面板")
+        default: return nil
+        }
+    }
+
+    private static func toolboxTab(forActionCandidate candidate: Candidate) -> ToolboxTab? {
+        guard candidate.isVMode && candidate.comment == "工具箱" else { return nil }
+        switch candidate.text {
+        case "打开剪贴板工具箱": return .clipboard
+        case "打开常用语工具箱": return .snippets
+        case "打开符号与表情面板": return .symbols
+        default: return nil
+        }
+    }
+
     private func updateCandidates(client: Any?) {
         guard !buffer.isEmpty else {
             resetComposition(client: client)
@@ -1104,15 +1402,47 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
 
         if isCalculatorComposition && buffer.count > 1 {
             inputMode = .vMode
-            allCandidates = VModeCalculator.shared.candidates(for: buffer)
+            if let action = Self.vModeToolboxAction(for: buffer) {
+                allCandidates = [Candidate(text: action.title, comment: "工具箱", isVMode: true)]
+            } else {
+                allCandidates = VModeCalculator.shared.candidates(for: buffer)
+            }
             if allCandidates.isEmpty {
                 allCandidates = [Candidate(text: buffer, comment: "v模式")]
             }
+        } else if isUModeComposition {
+            inputMode = .uMode
+            allCandidates = UModeChaiziEngine.shared.query(buffer)
+            if allCandidates.isEmpty {
+                allCandidates = [Candidate(text: buffer, comment: "英", consumedInputLength: buffer.count)]
+            }
         } else {
-            if inputMode == .vMode {
+            if inputMode == .vMode || inputMode == .uMode {
                 inputMode = .chinese
             }
             allCandidates = DoublePinyin.query(buffer, scheme: compositionScheme, precedingText: compositionContext)
+            if compositionScheme != .wubi86, let action = Self.vModeToolboxAction(for: buffer) {
+                allCandidates.insert(Candidate(text: action.title, comment: "工具箱", isVMode: true), at: 0)
+            }
+            let matchedSnippets = QuickSnippetStore.shared.matchedByShortcut(buffer)
+            if !matchedSnippets.isEmpty {
+                let existingTexts = Set(allCandidates.map(\.text))
+                let snippetCandidates = matchedSnippets
+                    .filter { !existingTexts.contains($0.content) }
+                    .map {
+                        Candidate(
+                            text: $0.content,
+                            comment: "常用语",
+                            isVMode: true,
+                            consumedInputLength: buffer.count
+                        )
+                    }
+                if !snippetCandidates.isEmpty {
+                    let firstEnglishIdx = allCandidates.firstIndex(where: { $0.comment == "英" }) ?? allCandidates.count
+                    let insertAt = min(2, firstEnglishIdx)
+                    allCandidates.insert(contentsOf: snippetCandidates, at: insertAt)
+                }
+            }
         }
 
         if rawBuffer != buffer {
@@ -1132,7 +1462,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             }
         }
 
-        if !isCalculatorComposition && AetherSettings.shared.isTraditionalChineseEnabled {
+        if !isCalculatorComposition && !isUModeComposition && AetherSettings.shared.isTraditionalChineseEnabled {
             allCandidates = ChineseScriptConverter.shared.convertCandidates(allCandidates, toTraditional: true)
         }
 
@@ -1214,10 +1544,61 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         return activeClient
     }
 
+    private func commitWordToChar(useFirst: Bool, client: Any?) -> Bool {
+        guard !isUModeComposition else { return false }
+        let pageCands = candidatesForCurrentPage()
+        guard !pageCands.isEmpty else { return false }
+        let idx = min(max(0, selectedIndexInPage), pageCands.count - 1)
+        let candidate = pageCands[idx]
+        guard candidate.comment != "英",
+              !candidate.isEmoji,
+              !candidate.isVMode,
+              candidate.comment != "常用语",
+              candidate.text.count >= 2 else {
+            return false
+        }
+
+        let extracted = useFirst ? String(candidate.text.first!) : String(candidate.text.last!)
+        let targetClient = resolveClient(client)
+        let formatted = AetherSettings.shared.isPanguSpacingEnabled
+            ? PanguSpacing.shared.formatCommitText(preceding: compositionPrecedingChar, committing: extracted)
+            : extracted
+
+        lastLearnedCommits.removeAll()
+        lastCommitWasSmartPunctuation = false
+        lastAutoPairedCloseChar = nil
+
+        if compositionScheme == .full, candidate.canonicalText.count >= 2 {
+            let readingSlice = String(buffer.prefix(candidate.consumedInputLength > 0 ? candidate.consumedInputLength : buffer.count))
+            let tokens = PinyinEngine.shared.segmentTokens(rawInput: readingSlice)
+            if tokens.count == candidate.canonicalText.count,
+               let token = useFirst ? tokens.first : tokens.last,
+               let canonicalChar = useFirst ? candidate.canonicalText.first : candidate.canonicalText.last {
+                let singleReading = token.text
+                let singleWord = String(canonicalChar)
+                UserLexicon.shared.recordCommit(pinyin: singleReading, word: singleWord)
+                lastLearnedCommits.append((pinyin: singleReading, word: singleWord))
+            }
+        }
+
+        commitDirect(text: formatted, client: targetClient)
+        clearState()
+        return true
+    }
+
     private func commitCandidate(_ candidate: Candidate, client: Any?) {
         let targetClient = resolveClient(client)
+
+        if candidate.isVMode, let tab = Self.toolboxTab(forActionCandidate: candidate) {
+            let anchor = lastCompositionCaretRect ?? queryHostCaretRect(client: targetClient)
+            let level = (targetClient as? IMKTextInput)?.windowLevel()
+            resetComposition(client: targetClient)
+            showToolbox(tab: tab, anchorRect: anchor, clientWindowLevel: level, client: targetClient)
+            return
+        }
+
         let consumed = candidate.consumedInputLength
-        let isPartial = (consumed > 0 && consumed < buffer.count && !isCalculatorComposition)
+        let isPartial = (consumed > 0 && consumed < buffer.count && !isCalculatorComposition && !isUModeComposition)
         let canonicalWord = candidate.canonicalText
 
         if isPartial {
@@ -1227,6 +1608,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             UserLexicon.shared.recordCommit(pinyin: consumedPinyin, word: canonicalWord)
             lastLearnedCommits = [(pinyin: consumedPinyin, word: canonicalWord)]
             lastCommitWasSmartPunctuation = false
+            lastAutoPairedCloseChar = nil
 
             let formattedPart = AetherSettings.shared.isPanguSpacingEnabled
                 ? PanguSpacing.shared.formatCommitText(preceding: compositionPrecedingChar, committing: candidate.text)
@@ -1250,7 +1632,9 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let fullPinyin = candidateReading(candidate)
         lastLearnedCommits.removeAll()
         lastCommitWasSmartPunctuation = false
-        if !isCalculatorComposition && candidate.comment != "英" && !candidate.isEmoji {
+        lastAutoPairedCloseChar = nil
+        if !isCalculatorComposition && !isUModeComposition && !candidate.isVMode
+            && candidate.comment != "英" && !candidate.isEmoji && candidate.comment != "常用语" {
             UserLexicon.shared.recordCommit(pinyin: fullPinyin, word: canonicalWord)
             lastLearnedCommits.append((pinyin: fullPinyin, word: canonicalWord))
             if !partialComposedText.isEmpty && !originalFullBuffer.isEmpty {
@@ -1332,11 +1716,188 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         allCandidates.removeAll()
         currentPage = 1
         selectedIndexInPage = 0
-        if inputMode == .vMode {
+        if inputMode == .vMode || inputMode == .uMode {
             inputMode = .chinese
         }
 
         onMainActor { CandidatePanelHolder.shared.dismiss() }
+    }
+
+    // MARK: - Floating Toolbox Panel Integration
+    @MainActor
+    public static func presentToolbox(tab: ToolboxTab? = nil, copyToPasteboard: Bool = false) {
+        if !copyToPasteboard, let active = currentActive, active.activeClient != nil {
+            active.openToolbox(tab: tab, client: active.activeClient)
+            return
+        }
+        let panel = ToolboxPanelHolder.shared
+        syncToolboxData(into: panel)
+        wireClipboardCallbacks(on: panel)
+        panel.state.onCommitText = { [weak panel] text in
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            if AetherSettings.shared.isClipboardHistoryEnabled {
+                ClipboardHistoryStore.shared.capturePasteboardIfNeeded(pasteboard)
+            }
+            StatusHUDHolder.shared.show(badge: "已复制", title: "已复制到剪贴板", isAccent: true, anchorRect: nil, clientWindowLevel: nil)
+            panel?.dismiss()
+        }
+        panel.show(tab: tab, anchorRect: nil, clientWindowLevel: nil)
+    }
+
+    public func openToolbox(tab: ToolboxTab? = nil, client: Any? = nil) {
+        let targetClient = resolveClient(client)
+        let anchor = lastCompositionCaretRect ?? queryHostCaretRect(client: targetClient)
+        let level = (targetClient as? IMKTextInput)?.windowLevel()
+        showToolbox(tab: tab, anchorRect: anchor, clientWindowLevel: level, client: targetClient)
+    }
+
+    private func toggleToolbox(tab: ToolboxTab, client: Any?) {
+        let shouldDismiss = onMainActorSync {
+            let state = ToolboxPanelHolder.shared.state
+            return state.isVisible && state.activeTab == tab
+        }
+        if shouldDismiss {
+            onMainActorSync {
+                ToolboxPanelHolder.shared.dismiss()
+                return true
+            }
+        } else {
+            openToolbox(tab: tab, client: client)
+        }
+    }
+
+    private func showToolbox(tab: ToolboxTab?, anchorRect: NSRect?, clientWindowLevel: CGWindowLevel?, client: Any?) {
+        if let client {
+            self.activeClient = client as AnyObject
+        }
+        onMainActor { [weak self] in
+            let panel = ToolboxPanelHolder.shared
+            Self.syncToolboxData(into: panel)
+            Self.wireClipboardCallbacks(on: panel)
+            panel.state.onCommitText = { [weak self, weak panel] text in
+                guard let self else { return }
+                let targetClient = self.resolveClient(self.activeClient)
+                let isSnippets = panel?.state.activeTab == .snippets
+                let textToCommit: String
+                if isSnippets && AetherSettings.shared.isPanguSpacingEnabled {
+                    let preceding = self.effectivePrecedingChar(client: targetClient)
+                    textToCommit = PanguSpacing.shared.formatCommitText(preceding: preceding, committing: text)
+                } else {
+                    textToCommit = text
+                }
+                self.lastLearnedCommits.removeAll()
+                self.lastCommitWasSmartPunctuation = false
+                self.lastAutoPairedCloseChar = nil
+                self.commitDirect(text: textToCommit, client: targetClient)
+                panel?.dismiss()
+            }
+            panel.show(tab: tab, anchorRect: anchorRect, clientWindowLevel: clientWindowLevel)
+        }
+    }
+
+    @MainActor
+    private static func wireClipboardCallbacks(on panel: ToolboxPanel) {
+        panel.state.onPinClipboard = { [weak panel] id in
+            ClipboardHistoryStore.shared.togglePin(id: id)
+            if let panel { syncToolboxData(into: panel) }
+        }
+        panel.state.onDeleteClipboard = { [weak panel] id in
+            ClipboardHistoryStore.shared.remove(id: id)
+            if let panel { syncToolboxData(into: panel) }
+        }
+        panel.state.onClearClipboard = { [weak panel] in
+            ClipboardHistoryStore.shared.clearUnpinned()
+            if let panel { syncToolboxData(into: panel) }
+        }
+        panel.state.onClose = { }
+        panel.state.onRefresh = { [weak panel] in
+            ClipboardHistoryStore.shared.capturePasteboardIfNeeded(.general)
+            if let panel { syncToolboxData(into: panel) }
+        }
+    }
+
+    @MainActor
+    private static func syncToolboxData(into panel: ToolboxPanel) {
+        panel.state.snippets = QuickSnippetStore.shared.items.map {
+            ToolboxSnippetItem(
+                id: $0.id,
+                title: $0.title,
+                content: $0.content,
+                shortcutCode: $0.shortcutCode,
+                isPinned: $0.isPinned
+            )
+        }
+        panel.state.clipboardItems = ClipboardHistoryStore.shared.items.map {
+            ToolboxClipboardItem(
+                id: $0.id,
+                text: $0.text,
+                copiedAt: $0.copiedAt,
+                isPinned: $0.isPinned
+            )
+        }
+    }
+
+    private func handleToolboxKeyEvent(_ event: NSEvent, bareModifiers: NSEvent.ModifierFlags) -> Bool {
+        switch event.keyCode {
+        case 53: // Esc
+            onMainActorSync {
+                ToolboxPanelHolder.shared.dismiss()
+                return true
+            }
+            return true
+        case 126: // Up
+            onMainActorSync {
+                ToolboxPanelHolder.shared.moveSelection(delta: -1)
+                return true
+            }
+            return true
+        case 125: // Down
+            onMainActorSync {
+                ToolboxPanelHolder.shared.moveSelection(delta: 1)
+                return true
+            }
+            return true
+        case 48: // Tab -> cycle .snippets / .clipboard / .symbols
+            let reverse = (bareModifiers == [.shift])
+            guard bareModifiers.isEmpty || reverse else { return false }
+            onMainActorSync {
+                let tabs = ToolboxTab.allCases
+                let state = ToolboxPanelHolder.shared.state
+                if let currentIdx = tabs.firstIndex(of: state.activeTab) {
+                    let nextIdx = reverse
+                        ? (currentIdx - 1 + tabs.count) % tabs.count
+                        : (currentIdx + 1) % tabs.count
+                    state.activeTab = tabs[nextIdx]
+                    state.selectedIndex = 0
+                    if state.activeTab != .symbols {
+                        state.onRefresh?()
+                    }
+                }
+                return true
+            }
+            return true
+        case 36, 76, 49: // Return / Enter / Space
+            guard bareModifiers.isEmpty else { return false }
+            onMainActorSync {
+                _ = ToolboxPanelHolder.shared.commitSelected()
+                return true
+            }
+            return true
+        default:
+            if bareModifiers.isEmpty,
+               let ch = event.characters?.first,
+               let digit = ch.wholeNumberValue,
+               (1...9).contains(digit) {
+                onMainActorSync {
+                    _ = ToolboxPanelHolder.shared.commitNumber(digit)
+                    return true
+                }
+                return true
+            }
+            return false
+        }
     }
 
     // MARK: - Caret Positioning & Panel Rendering
@@ -1392,7 +1953,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         let curCandidates = candidatesForCurrentPage()
         let curBuffer = buffer
         let curRawBuffer = rawBuffer
-        let baseDisplayPinyin = (inputMode == .vMode)
+        let baseDisplayPinyin = (inputMode == .vMode || inputMode == .uMode)
             ? curRawBuffer
             : (compositionScheme == .full
                 ? PinyinEngine.shared.formatSegmentedPinyin(rawInput: curBuffer)
@@ -1402,7 +1963,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             formatted: baseDisplayPinyin,
             cursorOffset: compositionCursor,
             scheme: compositionScheme,
-            isVMode: inputMode == .vMode
+            isVMode: inputMode == .vMode || inputMode == .uMode
         )
         let curMode = inputMode
         let curViewMode = candidateViewMode

@@ -1,21 +1,32 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import Combine
 import InputMethodKit
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
+    private var cancellables = Set<AnyCancellable>()
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // Pre-warm the 530k+ lexicon & Wubi table in background for zero first-keystroke latency
+        // Pre-warm the 530k+ lexicon, language model, English mix, U-mode chaizi & Wubi table in background
         DispatchQueue.global(qos: .userInitiated).async {
             PinyinEngine.shared.preload()
+            LanguageModel.shared.preload()
+            EnglishMixEngine.shared.preload()
+            UModeChaiziEngine.shared.preload()
             _ = WubiEngine.shared.entryCount
         }
         invalidateIntlFileCacheModificationPasteboard()
         LoginItemController.shared.start()
         UpdateController.shared.start()
+        setupClipboardMonitoring()
+        if AetherSettings.shared.isAutoSyncEnabled {
+            DispatchQueue.global(qos: .utility).async {
+                _ = try? LexiconSyncManager.shared.syncNow()
+            }
+        }
         setupStatusMenu()
         updateStatusItemVisibility()
         
@@ -116,6 +127,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let prefsItem = NSMenuItem(title: "偏好设置与词库中心...", action: #selector(openPreferences), keyEquivalent: ",")
         prefsItem.target = self
         menu.addItem(prefsItem)
+
+        let toolboxItem = NSMenuItem(title: "快捷工具箱（常用语/剪贴板/符号）…", action: #selector(openToolbox), keyEquivalent: "")
+        toolboxItem.target = self
+        menu.addItem(toolboxItem)
+
+        let syncItem = NSMenuItem(title: "立即同步词库与常用语", action: #selector(syncLexiconNow), keyEquivalent: "")
+        syncItem.target = self
+        menu.addItem(syncItem)
+
         let updateItem = NSMenuItem(title: "检查更新…", action: #selector(UpdateController.checkForUpdates), keyEquivalent: "")
         updateItem.target = UpdateController.shared
         menu.addItem(updateItem)
@@ -217,8 +237,45 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
     }
     
+    private func setupClipboardMonitoring() {
+        if AetherSettings.shared.isClipboardHistoryEnabled {
+            ClipboardHistoryStore.shared.startMonitoring()
+        }
+        AetherSettings.shared.$isClipboardHistoryEnabled
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { enabled in
+                if enabled {
+                    ClipboardHistoryStore.shared.startMonitoring()
+                } else {
+                    ClipboardHistoryStore.shared.stopMonitoring()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
     @objc private func openPreferences() {
         PreferencesWindowController.shared.showWindow()
+    }
+
+    @objc private func openToolbox() {
+        AetherInputController.presentToolbox()
+    }
+
+    @objc private func syncLexiconNow() {
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                _ = try LexiconSyncManager.shared.syncNow()
+                Task { @MainActor in
+                    StatusHUDHolder.shared.show(badge: "同步", title: "词库与常用语已同步", isAccent: true, anchorRect: nil)
+                }
+            } catch {
+                let message = error.localizedDescription
+                Task { @MainActor in
+                    StatusHUDHolder.shared.show(badge: "失败", title: message, isAccent: false, anchorRect: nil)
+                }
+            }
+        }
     }
     
     @objc private func selectScheme(_ sender: NSMenuItem) {

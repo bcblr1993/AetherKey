@@ -187,14 +187,18 @@ public struct CandidateListView: View {
         (mode == .chinese && isTraditional) ? "繁" : mode.badgeTitle
     }
 
+    private var badgeTint: Color {
+        mode == .uMode ? Color(red: 0.686, green: 0.322, blue: 0.871) : Color.accentColor
+    }
+
     private var headerView: some View {
         HStack(spacing: 6) {
             Text(badgeTitle)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(badgeTint)
                 .padding(.horizontal, 4)
                 .frame(height: 18)
-                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
+                .background(badgeTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
 
             Text(displayPinyin.isEmpty ? inputString : displayPinyin)
                 .font(.system(size: 12, weight: .medium))
@@ -340,7 +344,7 @@ public struct CandidateListView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            if mode == .chinese && !candidate.isEmoji && candidate.comment != "英" {
+            if mode == .chinese && !candidate.isEmoji && !candidate.isVMode && candidate.comment != "英" && candidate.comment != "常用语" {
                 if isCandidatePinned?(index) == true {
                     Button("取消置顶", systemImage: "pin.slash") { onCandidateAction?(index, .unpin) }
                 } else {
