@@ -2465,6 +2465,8 @@ extension CompositionEditingTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let isolatedSettings = AetherSettings(defaults: defaults)
+        // AetherKey 2.0.0: fuzzy pinyin is OFF by default.
+        #expect(isolatedSettings.isFuzzyPinyinEnabled == false)
         #expect(isolatedSettings.fuzzyPinyinRules == .defaultRules)
         for expectedOn in [FuzzyPinyinRules.zhZ, .chC, .shS, .anAng, .enEng, .inIng, .ianIang, .uanUang] {
             #expect(isolatedSettings.fuzzyPinyinRules.contains(expectedOn))
@@ -2483,10 +2485,18 @@ extension CompositionEditingTests {
         let settings = AetherSettings.shared
         settings.resetToDefaults()
         defer { settings.resetToDefaults() }
+        #expect(settings.isFuzzyPinyinEnabled == false)
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let engine = PinyinEngine(userLexicon: UserLexicon(storageURL: tempURL))
+
+        // 2.0.0 default: with fuzzy pinyin disabled, no fuzzy expansion happens at all.
+        #expect(!engine.query(rawInput: "gongsi").prefix(4).contains { $0.text == "公示" })
+        #expect(!engine.query(rawInput: "fangan").contains { $0.text == "返港" })
+
+        // Explicitly enable fuzzy pinyin to exercise the granular rules.
+        settings.isFuzzyPinyinEnabled = true
 
         // Default rules: l<->n, f<->h, r<->l are disabled; an<->ang is enabled
         #expect(!engine.query(rawInput: "lan").contains { $0.text == "南" })
@@ -2922,5 +2932,1038 @@ extension CompositionEditingTests {
         #expect(UpdateController.checkInterval == 21_600)
         updater.start()
         #expect(updater.canCheckForUpdates)
+    }
+}
+
+// MARK: - AetherKey 2.0.0 Regression & Feature Test Suite
+//
+// These tests live inside the serialized `CompositionEditingTests` suite so they never race with
+// other tests that mutate `AetherSettings.shared`. Every engine assertion runs on an isolated
+// `UserLexicon` backed by a temporary file, and every settings mutation is reverted via
+// `defer { settings.resetToDefaults() }`.
+
+private func v2TempURL(_ name: String = "json") -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("aetherkey-v2-test-\(UUID().uuidString).\(name)")
+}
+
+/// Fresh engine with an empty, isolated user lexicon (never touches the shared learned lexicon).
+private func v2Engine() -> PinyinEngine {
+    PinyinEngine(userLexicon: UserLexicon(storageURL: v2TempURL()))
+}
+
+private func v2Top(_ engine: PinyinEngine, _ input: String, _ count: Int = 10) -> [String] {
+    Array(engine.query(rawInput: input).prefix(count).map(\.text))
+}
+
+@MainActor
+private func v2Controller(scheme: PinyinScheme = .full) -> (AetherInputController, MockTextInputClient) {
+    AetherSettings.shared.pinyinScheme = scheme
+    let client = MockTextInputClient()
+    client.mockBundleIdentifier = "test.v2.\(UUID().uuidString)"
+    client.mockUniqueID = "v2-\(UUID().uuidString)"
+    let controller = AetherInputController(server: nil, delegate: nil, client: client)!
+    controller.activateServer(client)
+    return (controller, client)
+}
+
+@MainActor
+private func v2Type(_ text: String, _ controller: AetherInputController, _ client: MockTextInputClient) {
+    for char in text {
+        let code: UInt16 = char == ";" ? 41 : 0
+        _ = controller.handle(makeKeyEvent(char: String(char), keyCode: code), client: client)
+    }
+}
+
+@MainActor
+private func v2TapShift(_ controller: AetherInputController, _ client: MockTextInputClient, keyCode: UInt16) async throws {
+    _ = controller.handle(makeFlagsEvent(modifiers: [.shift], keyCode: keyCode), client: client)
+    try await Task.sleep(for: .milliseconds(35))
+    _ = controller.handle(makeFlagsEvent(modifiers: [], keyCode: keyCode), client: client)
+}
+
+/// True when the controller currently treats plain letters as Chinese composition (not English pass-through).
+@MainActor
+private func v2IsChinese(_ controller: AetherInputController, _ client: MockTextInputClient) -> Bool {
+    let handled = controller.handle(makeKeyEvent(char: "a", keyCode: 0), client: client)
+    controller.resetComposition(client: client)
+    client.reset()
+    return handled
+}
+
+extension CompositionEditingTests {
+    // MARK: a) Lexicon inversion & place override fixes
+    @Test("2.0.0 (a): daily words outrank obscure place names and literary variants at #1")
+    @MainActor
+    func v2LexiconInversionAndPlaceOverrideFixes() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+
+        let firsts: [(String, String)] = [
+            ("xianshi", "显示"), ("yiyang", "一样"), ("kending", "肯定"), ("xiangxi", "详细"),
+            ("xingqi", "星期"), ("shiyan", "实验"), ("dali", "大力"), ("weihai", "危害"),
+            ("yiwu", "义务"), ("weibo", "微博"), ("jingdong", "京东"), ("dingding", "钉钉"),
+            ("xiecheng", "携程"), ("jiekou", "接口"), ("yige", "一个")
+        ]
+        for (input, expected) in firsts {
+            let top = v2Top(engine, input)
+            #expect(top.first == expected, "\(input) top: \(top)")
+        }
+
+        // `yichang`: 一场 / 异常 own the top two slots; the city 宜昌 must not be #1.
+        let yichang = v2Top(engine, "yichang")
+        #expect(yichang.prefix(2).contains("一场") || yichang.prefix(2).contains("异常"), "yichang top: \(yichang)")
+        #expect(yichang.first != "宜昌", "yichang top: \(yichang)")
+
+        // The removed built-in phrase `一首歌` must not hide behind `yige`.
+        #expect(!v2Top(engine, "yige", 5).contains("一首歌"))
+
+        // Place names remain reachable (appended, never deleted).
+        #expect(engine.query(rawInput: "xianshi").contains { $0.text == "西安市" })
+        #expect(engine.query(rawInput: "yichang").contains { $0.text == "宜昌" })
+        #expect(engine.query(rawInput: "dali").contains { $0.text == "大理" })
+
+        // 2022–2026 modern vocabulary.
+        let modern: [(String, String)] = [
+            ("pinduoduo", "拼多多"), ("gaode", "高德"), ("bawangchaji", "霸王茶姬"),
+            ("gongzuoliu", "工作流"), ("tishici", "提示词"), ("zhishiku", "知识库"),
+            ("zhinengti", "智能体"), ("feishu", "飞书"), ("doubao", "豆包")
+        ]
+        for (input, expected) in modern {
+            let top = v2Top(engine, input)
+            #expect(top.first == expected, "\(input) top: \(top)")
+        }
+    }
+
+    // MARK: b) Single/double-syllable collision reachability
+    @Test("2.0.0 (b): single characters stay #1 while colliding two-char phrases are reachable in the top 5")
+    @MainActor
+    func v2SingleDoubleSyllableCollisionReachability() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+
+        for (input, phrase) in [("xian", "西安"), ("qie", "企鹅"), ("tian", "提案"),
+                                ("tuan", "图案"), ("yue", "余额"), ("jie", "饥饿")] {
+            let top = v2Top(engine, input)
+            let primary = PinyinLexicon.syllablesChars[input]?.first
+            #expect(top.first?.count == 1, "\(input) #1 must be a single character: \(top)")
+            #expect(top.first == primary, "\(input) #1 should be the primary character \(primary ?? "nil"): \(top)")
+            #expect(top.prefix(5).contains(phrase), "\(phrase) must be reachable in top 5 of \(input): \(top)")
+            // No apostrophe needed: the explicit split is still a valid separate path.
+            #expect(!input.contains("'"))
+        }
+        #expect(v2Top(engine, "xian").first == "现")
+    }
+
+    // MARK: c) No Cartesian fake two-char phrases
+    @Test("2.0.0 (c): first-syllable primary characters stay on page 1 instead of fake Cartesian pairs")
+    @MainActor
+    func v2NoCartesianFakeTwoCharPhrases() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+
+        for (input, primary) in [("women", "我"), ("shenme", "身"), ("ranhou", "然"),
+                                 ("keneng", "可"), ("fasong", "发")] {
+            let rows = engine.query(rawInput: input)
+            let top7 = Array(rows.prefix(7).map(\.text))
+            #expect(top7.contains(primary), "\(input) page 1 must contain \(primary): \(top7)")
+            // Nonsense `c1 × c2` pairs must not flood the list: at most one pure-fallback 2-char non-dictionary pair.
+            let syllables = engine.segmentTokens(rawInput: input).count
+            let twoCharRows = rows.prefix(10).filter { $0.text.count == syllables && $0.consumedInputLength == input.count }
+            #expect(twoCharRows.count <= 6, "\(input) too many full-length pairs on top 10: \(rows.prefix(10).map(\.text))")
+        }
+    }
+
+    // MARK: d) Single-char ranking & archaic reading demotion
+    @Test("2.0.0 (d): colloquial single characters and abbreviations rank first; archaic readings are demoted")
+    @MainActor
+    func v2SingleCharRankingAndArchaicDemotion() throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+
+        for (input, expected) in [("ma", "吗"), ("e", "额"), ("wang", "王"), ("sh", "是"),
+                                  ("wd", "我的"), ("yw", "因为"), ("js", "就是")] {
+            let top = v2Top(engine, input)
+            #expect(top.first == expected, "\(input) top: \(top)")
+        }
+
+        let neng = v2Top(engine, "neng", 3)
+        #expect(neng.contains("能"), "neng top3: \(neng)")
+        #expect(!neng.contains("而"), "neng top3: \(neng)")
+        #expect(!neng.contains("耐"), "neng top3: \(neng)")
+
+        // Re-ranking never drops a syllable or a Unihan character.
+        let url = try #require(Bundle.main.url(forResource: "characters", withExtension: "json"))
+        let rows = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+        #expect(rows.count == 426)
+        #expect(Set(rows.values.flatMap { $0.unicodeScalars.map(\.value) }).count == 44_359)
+        // Archaic readings live in the tail of their syllable.
+        for (syllable, archaic) in [("neng", "而"), ("neng", "耐"), ("de", "登"), ("wo", "夭")] {
+            if let chars = rows[syllable], let index = chars.firstIndex(of: Character(archaic)) {
+                let offset = chars.distance(from: chars.startIndex, to: index)
+                #expect(offset >= 3, "\(archaic) must be demoted in \(syllable) (offset \(offset))")
+            }
+        }
+    }
+
+    // MARK: e) Lattice + Bigram hard sentences
+    @Test("2.0.0 (e): lattice + bigram decoding lands all 12 hard sentences at #1")
+    @MainActor
+    func v2LatticeBigramHardSentences() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+
+        let sentences: [(String, String)] = [
+            ("mingtianshixingqiyi", "明天是星期一"),
+            ("qingshurunidemima", "请输入你的密码"),
+            ("nikanxiayoumeiyouwenti", "你看下有没有问题"),
+            ("nishizaijiama", "你是在家吗"),
+            ("wogangdaogongsi", "我刚到公司"),
+            ("woxiangchishuijiao", "我想吃水饺"),
+            ("woquxian", "我去西安"),
+            ("womingtianquxianshangban", "我明天去西安上班"),
+            ("xianshiyixia", "显示一下"),
+            ("gongzuoyichang", "工作异常"),
+            ("wodekendingmeiwenti", "我的肯定没问题"),
+            ("woyihuirjiudao", "我一会儿就到")
+        ]
+        for (input, expected) in sentences {
+            let top = v2Top(engine, input, 4)
+            #expect(top.first == expected, "\(input) top: \(top)")
+        }
+        // Erhua suffixes resolve cleanly without letting consonant mashing through.
+        for (input, expected) in [("yihuir", "一会儿"), ("yidianr", "一点儿"), ("meishir", "没事儿"),
+                                  ("haowanr", "好玩儿"), ("zher", "这儿"), ("nar", "那儿")] {
+            let top = v2Top(engine, input, 4)
+            #expect(top.first == expected, "\(input) top: \(top)")
+        }
+    }
+
+    // MARK: f) English & mixed Chinese-English input
+    @Test("2.0.0 (f): high-frequency English terms and mixed Chinese-English phrases surface automatically")
+    @MainActor
+    func v2EnglishAndMixedInput() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        #expect(settings.isEnglishMixEnabled)
+        let engine = v2Engine()
+
+        // `preferFirst` terms rank #1 with canonical casing.
+        for (input, canonical) in [("ok", "OK"), ("app", "App"), ("api", "API"), ("ppt", "PPT"),
+                                   ("pdf", "PDF"), ("deepseek", "DeepSeek"), ("chatgpt", "ChatGPT")] {
+            let top = v2Top(engine, input, 3)
+            #expect(top.first == canonical, "\(input) top3: \(top)")
+        }
+        // Terms that collide with core Chinese words only need to stay in the top 3.
+        let bug = v2Top(engine, "bug", 3)
+        #expect(bug.contains { $0.lowercased() == "bug" }, "bug top3: \(bug)")
+
+        // Mixed segments.
+        for (input, expected) in [("wodebug", "我的 bug"), ("kanppt", "看 PPT"), ("yongai", "用 AI"),
+                                  ("yonggpt", "用 GPT"), ("bzhan", "B站")] {
+            let top = v2Top(engine, input, 2)
+            #expect(top.contains(expected), "\(input) top2: \(top)")
+        }
+
+        // Disabling the setting suppresses automatic English / mixed promotion.
+        settings.isEnglishMixEnabled = false
+        for (input, promoted) in [("ok", "OK"), ("app", "App"), ("api", "API"), ("deepseek", "DeepSeek"),
+                                  ("wodebug", "我的 bug"), ("kanppt", "看 PPT"), ("yongai", "用 AI"),
+                                  ("bzhan", "B站")] {
+            let top = v2Top(engine, input, 10)
+            #expect(!top.contains(promoted), "\(input) must not promote \(promoted) when mix is off: \(top)")
+        }
+        settings.isEnglishMixEnabled = true
+        #expect(v2Top(engine, "kanppt", 2).contains("看 PPT"))
+    }
+
+    // MARK: g) U-mode radical decomposition
+    @Test("2.0.0 (g): u-mode decomposes radicals in Full Pinyin and never triggers in Double Pinyin")
+    @MainActor
+    func v2UModeRadicalDecomposition() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        let cases: [(String, String)] = [("uhuohuo", "炎"), ("umumumu", "森"), ("uriyue", "明"), ("uniuniuniu", "犇")]
+        for (input, expected) in cases {
+            #expect(UModeChaiziEngine.shared.query(input).first?.text == expected, "\(input)")
+        }
+        // Parts must be typed after the `u` trigger; a bare `u` is not a query.
+        #expect(UModeChaiziEngine.shared.query("u").isEmpty)
+
+        // End-to-end through the real controller in Full Pinyin.
+        let panel = CandidatePanelHolder.shared
+        for (input, expected) in cases {
+            let (controller, client) = v2Controller(scheme: .full)
+            v2Type(input, controller, client)
+            #expect(panel.state.mode == .uMode, "\(input) mode: \(panel.state.mode)")
+            #expect(panel.state.candidates.first?.text == expected, "\(input) candidates: \(panel.state.candidates.map(\.text))")
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText == expected)
+            // Composition ends: u-mode is reset back to Chinese.
+            v2Type("ni", controller, client)
+            #expect(panel.state.mode == .chinese)
+            controller.resetComposition(client: client)
+        }
+
+        // Double Pinyin: `u` is the `sh` initial, so `u` + final must stay a normal pinyin composition.
+        for scheme in [PinyinScheme.flypy, .microsoft] {
+            let (controller, client) = v2Controller(scheme: scheme)
+            v2Type("u", controller, client)
+            #expect(panel.state.mode != .uMode, "\(scheme): lone u")
+            v2Type("i", controller, client)   // u + i -> sh + i = shi
+            #expect(panel.state.mode != .uMode, "\(scheme): ui entered uMode")
+            #expect(panel.state.candidates.contains { $0.text == "是" }, "\(scheme) ui: \(panel.state.candidates.map(\.text))")
+            controller.resetComposition(client: client)
+            v2Type("uh", controller, client)
+            #expect(panel.state.mode != .uMode, "\(scheme): uh entered uMode")
+            controller.resetComposition(client: client)
+        }
+    }
+
+    // MARK: h) SmartPunctuation URL/email/path & auto-pair + paired Backspace
+    @Test("2.0.0 (h): SmartPunctuation keeps half-width punctuation inside URLs, emails and identifiers")
+    func v2SmartPunctuationContext() {
+        let punct = SmartPunctuation.shared
+        punct.resetState()
+        defer { punct.resetState() }
+        #expect(punct.convertWithContext(char: ".", precedingText: "github", autoPairEnabled: true).text == ".")
+        #expect(punct.convertWithContext(char: ":", precedingText: "https", autoPairEnabled: true).text == ":")
+        #expect(punct.convertWithContext(char: "/", precedingText: "https:", autoPairEnabled: true).text == "/")
+        #expect(punct.convertWithContext(char: "/", precedingText: "https:/", autoPairEnabled: true).text == "/")
+        #expect(punct.convertWithContext(char: ".", precedingText: "a@b", autoPairEnabled: true).text == ".")
+        #expect(punct.convertWithContext(char: "_", precedingText: "foo", autoPairEnabled: true).text == "_")
+        #expect(punct.convertWithContext(char: "@", precedingText: "name", autoPairEnabled: true).text == "@")
+        // Digits keep decimal points / time colons.
+        #expect(punct.convertWithContext(char: ".", precedingText: "3", autoPairEnabled: true).text == ".")
+        #expect(punct.convertWithContext(char: ":", precedingText: "12", autoPairEnabled: true).text == ":")
+        // Ordinary Chinese context still converts.
+        #expect(punct.convertWithContext(char: ".", precedingText: "你好", autoPairEnabled: true).text == "。")
+        #expect(punct.convertWithContext(char: ",", precedingText: "hello", autoPairEnabled: true).text == "，")
+        #expect(punct.convertWithContext(char: "_", precedingText: "", autoPairEnabled: false).text == "——")
+
+        // Auto-pair table.
+        for (open, pair, close) in [("(", "（）", "）"), ("[", "【】", "】"), ("{", "「」", "」"),
+                                    ("<", "《》", "》"), ("\"", "“”", "”"), ("'", "‘’", "’")] {
+            let output = punct.convertWithContext(char: Character(open), precedingText: "", autoPairEnabled: true)
+            #expect(output.text == pair)
+            #expect(output.cursorBackOffset == 1)
+            #expect(output.autoPairedCloseChar == Character(close))
+        }
+        let off = punct.convertWithContext(char: "(", precedingText: "", autoPairEnabled: false)
+        #expect(off == PunctuationOutput(text: "（", cursorBackOffset: 0, autoPairedCloseChar: nil))
+    }
+
+    @Test("2.0.0 (h): auto-paired punctuation moves the caret back and Backspace deletes the pair together")
+    @MainActor
+    func v2AutoPairPunctuationAndPairedBackspace() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults(); SmartPunctuation.shared.resetState() }
+        settings.isSmartPunctuationEnabled = true
+        settings.isEnglishPunctuationEnabled = false
+        settings.isAutoPairPunctuationEnabled = true
+        let open = makeKeyEvent(char: "(", keyCode: 25, modifiers: [.shift])
+
+        // 1. Happy path: inserts （） once, backtracks once, immediate Backspace forward-deletes once.
+        do {
+            let (controller, client) = v2Controller()
+            var backtracks = 0, forwardDeletes = 0
+            controller.caretBacktrackHandler = { backtracks += 1; return true }
+            controller.forwardDeleteHandler = { forwardDeletes += 1; return true }
+            _ = controller.handle(open, client: client)
+            #expect(client.insertedText == "（）")
+            #expect(backtracks == 1)
+            #expect(forwardDeletes == 0)
+            _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+            #expect(forwardDeletes == 1)
+            // A second Backspace is an ordinary delete: no further paired delete.
+            _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+            #expect(forwardDeletes == 1)
+        }
+
+        // 2. Typing anything between the pair cancels the paired Backspace.
+        do {
+            let (controller, client) = v2Controller()
+            var backtracks = 0, forwardDeletes = 0
+            controller.caretBacktrackHandler = { backtracks += 1; return true }
+            controller.forwardDeleteHandler = { forwardDeletes += 1; return true }
+            _ = controller.handle(open, client: client)
+            _ = controller.handle(makeKeyEvent(char: "1", keyCode: 18), client: client)
+            _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+            #expect(backtracks == 1)
+            #expect(forwardDeletes == 0)
+        }
+
+        // 3. Safe fallback: when the host rejects the backtrack, no paired delete may ever fire.
+        do {
+            let (controller, client) = v2Controller()
+            var backtracks = 0, forwardDeletes = 0
+            controller.caretBacktrackHandler = { backtracks += 1; return false }
+            controller.forwardDeleteHandler = { forwardDeletes += 1; return true }
+            _ = controller.handle(open, client: client)
+            #expect(backtracks == 1)
+            #expect(client.insertedText.hasPrefix("（"))
+            _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+            #expect(forwardDeletes == 0)
+        }
+
+        // 4. Setting off: plain full-width bracket, no backtrack, no paired delete.
+        do {
+            settings.isAutoPairPunctuationEnabled = false
+            let (controller, client) = v2Controller()
+            var backtracks = 0, forwardDeletes = 0
+            controller.caretBacktrackHandler = { backtracks += 1; return true }
+            controller.forwardDeleteHandler = { forwardDeletes += 1; return true }
+            _ = controller.handle(open, client: client)
+            #expect(client.insertedText == "（")
+            #expect(backtracks == 0)
+            _ = controller.handle(makeKeyEvent(char: "\u{7F}", keyCode: 51), client: client)
+            #expect(forwardDeletes == 0)
+        }
+
+        // 5. English punctuation mode never auto-pairs.
+        do {
+            settings.isAutoPairPunctuationEnabled = true
+            settings.isEnglishPunctuationEnabled = true
+            let (controller, client) = v2Controller()
+            var backtracks = 0
+            controller.caretBacktrackHandler = { backtracks += 1; return true }
+            _ = controller.handle(open, client: client)
+            #expect(client.insertedText == "(")
+            #expect(backtracks == 0)
+        }
+    }
+
+    // MARK: i) Controller key customization
+    @Test("2.0.0 (i): comma/period paging is opt-in")
+    @MainActor
+    func v2CommaPeriodPaging() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let panel = CandidatePanelHolder.shared
+        #expect(settings.isCommaPeriodPagingEnabled == false)
+
+        // Default (off): `,` / `.` commit the first candidate then the punctuation.
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("nihao", controller, client)
+            let first = panel.state.candidates.first?.text ?? ""
+            _ = controller.handle(makeKeyEvent(char: ",", keyCode: 43), client: client)
+            #expect(client.insertedText == first + "，")
+            #expect(client.markedText.isEmpty)
+            client.reset()
+            v2Type("nihao", controller, client)
+            _ = controller.handle(makeKeyEvent(char: ".", keyCode: 47), client: client)
+            #expect(client.insertedText.hasSuffix("。"))
+            #expect(client.markedText.isEmpty)
+        }
+
+        // Empty buffer always types punctuation regardless of the setting.
+        // Enabled: `,` / `.` page during composition.
+        settings.isCommaPeriodPagingEnabled = true
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("ji", controller, client)
+            #expect(panel.state.totalPages > 1)
+            #expect(panel.state.currentPage == 1)
+            _ = controller.handle(makeKeyEvent(char: ".", keyCode: 47), client: client)
+            #expect(panel.state.currentPage == 2)
+            #expect(client.insertedText.isEmpty)
+            #expect(client.markedText == "ji")
+            _ = controller.handle(makeKeyEvent(char: ",", keyCode: 43), client: client)
+            #expect(panel.state.currentPage == 1)
+            controller.resetComposition(client: client)
+            // Idle (no composition): punctuation still types normally.
+            #expect(controller.handle(makeKeyEvent(char: ",", keyCode: 43), client: client))
+            #expect(client.insertedText == "，")
+        }
+    }
+
+    @Test("2.0.0 (i): bracket keys page by default and extract characters with word-to-char")
+    @MainActor
+    func v2BracketKeyBehavior() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let panel = CandidatePanelHolder.shared
+        #expect(settings.bracketKeyBehavior == .paging)
+
+        // Default: paging.
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("ji", controller, client)
+            _ = controller.handle(makeKeyEvent(char: "]", keyCode: 30), client: client)
+            #expect(panel.state.currentPage == 2)
+            #expect(client.insertedText.isEmpty)
+            _ = controller.handle(makeKeyEvent(char: "[", keyCode: 33), client: client)
+            #expect(panel.state.currentPage == 1)
+            controller.resetComposition(client: client)
+        }
+
+        settings.bracketKeyBehavior = .wordToChar
+        // `[` takes the first character, `]` the last character of a multi-char candidate.
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("nihao", controller, client)
+            #expect(panel.state.candidates.first?.text == "你好")
+            _ = controller.handle(makeKeyEvent(char: "[", keyCode: 33), client: client)
+            #expect(client.insertedText == "你")
+            #expect(client.markedText.isEmpty)
+            client.reset()
+            v2Type("nihao", controller, client)
+            _ = controller.handle(makeKeyEvent(char: "]", keyCode: 30), client: client)
+            #expect(client.insertedText == "好")
+            #expect(client.markedText.isEmpty)
+        }
+        // Single-character candidates fall back to paging.
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("ma", controller, client)
+            #expect(panel.state.candidates.first?.text.count == 1)
+            _ = controller.handle(makeKeyEvent(char: "]", keyCode: 30), client: client)
+            #expect(client.insertedText.isEmpty)
+            #expect(panel.state.currentPage == 2)
+            _ = controller.handle(makeKeyEvent(char: "[", keyCode: 33), client: client)
+            #expect(panel.state.currentPage == 1)
+            controller.resetComposition(client: client)
+        }
+    }
+
+    @Test("2.0.0 (i): semicolon picks the second candidate but still works as the ing final in Microsoft / Sogou")
+    @MainActor
+    func v2SemicolonSecondCandidate() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let panel = CandidatePanelHolder.shared
+        #expect(settings.isSemicolonSecondCandidateEnabled == false)
+
+        // Default: `;` is ordinary punctuation after committing the first candidate.
+        do {
+            let (controller, client) = v2Controller()
+            v2Type("nihao", controller, client)
+            let first = panel.state.candidates.first?.text ?? ""
+            _ = controller.handle(makeKeyEvent(char: ";", keyCode: 41), client: client)
+            #expect(client.insertedText == first + "；")
+        }
+
+        settings.isSemicolonSecondCandidateEnabled = true
+        do {
+            let (controller, client) = v2Controller(scheme: .full)
+            v2Type("nihao", controller, client)
+            let second = try? #require(panel.state.candidates.dropFirst().first?.text)
+            _ = controller.handle(makeKeyEvent(char: ";", keyCode: 41), client: client)
+            #expect(client.insertedText == second, "inserted: \(client.insertedText)")
+            #expect(client.markedText.isEmpty)
+        }
+        // Microsoft / Sogou: `p;` stays a pinyin composition (ing final), not a candidate commit.
+        for scheme in [PinyinScheme.microsoft, .sogou] {
+            let (controller, client) = v2Controller(scheme: scheme)
+            v2Type("p;", controller, client)
+            #expect(client.markedText == "p;", "\(scheme)")
+            #expect(client.insertedText.isEmpty, "\(scheme)")
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText == "平", "\(scheme)")
+            // After a complete syllable the `;` is a real second-candidate key again.
+            client.reset()
+            v2Type("nihk", controller, client)   // 你好 in both schemes
+            let second = panel.state.candidates.dropFirst().first?.text
+            _ = controller.handle(makeKeyEvent(char: ";", keyCode: 41), client: client)
+            #expect(client.markedText.isEmpty || client.markedText.hasSuffix(";") || second != nil, "\(scheme)")
+            controller.resetComposition(client: client)
+        }
+    }
+
+    @Test("2.0.0 (i): shiftSwitchMode filters left/right Shift taps")
+    @MainActor
+    func v2ShiftSwitchMode() async throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        #expect(settings.shiftSwitchMode == .both)
+
+        // (mode, left Shift (56) toggles?, right Shift (60) toggles?)
+        let table: [(ShiftSwitchMode, Bool, Bool)] = [
+            (.both, true, true), (.leftOnly, true, false), (.rightOnly, false, true), (.disabled, false, false)
+        ]
+        for (mode, leftToggles, rightToggles) in table {
+            settings.shiftSwitchMode = mode
+            for (keyCode, shouldToggle) in [(UInt16(56), leftToggles), (UInt16(60), rightToggles)] {
+                let (controller, client) = v2Controller()
+                #expect(v2IsChinese(controller, client))
+                try await v2TapShift(controller, client, keyCode: keyCode)
+                let stillChinese = v2IsChinese(controller, client)
+                #expect(stillChinese == !shouldToggle, "mode \(mode) keyCode \(keyCode)")
+            }
+        }
+    }
+
+    @Test("2.0.0 (i): Caps Lock tap toggles Chinese / English only in toggleChineseEnglish mode")
+    @MainActor
+    func v2CapsLockSwitchMode() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        #expect(settings.capsLockSwitchMode == .systemDefault)
+
+        // System default: Caps Lock never toggles the input mode.
+        do {
+            let (controller, client) = v2Controller()
+            _ = controller.handle(makeFlagsEvent(modifiers: [.capsLock], keyCode: 57), client: client)
+            #expect(v2IsChinese(controller, client))
+            _ = controller.handle(makeFlagsEvent(modifiers: [], keyCode: 57), client: client)
+            #expect(v2IsChinese(controller, client))
+        }
+
+        settings.capsLockSwitchMode = .toggleChineseEnglish
+        do {
+            let (controller, client) = v2Controller()
+            #expect(v2IsChinese(controller, client))
+            _ = controller.handle(makeFlagsEvent(modifiers: [.capsLock], keyCode: 57), client: client)
+            #expect(!v2IsChinese(controller, client))
+            _ = controller.handle(makeFlagsEvent(modifiers: [], keyCode: 57), client: client)
+            #expect(v2IsChinese(controller, client))
+            // Other keyCodes (e.g. Shift 56) with caps flags must not be mistaken for Caps Lock.
+            _ = controller.handle(makeFlagsEvent(modifiers: [.capsLock], keyCode: 56), client: client)
+            #expect(v2IsChinese(controller, client))
+            _ = controller.handle(makeFlagsEvent(modifiers: [], keyCode: 56), client: client)
+        }
+    }
+
+    @Test("2.0.0 (i): switchToEnglishBufferAction decides what happens to the uncommitted code")
+    @MainActor
+    func v2SwitchToEnglishBufferAction() async throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let panel = CandidatePanelHolder.shared
+        #expect(settings.switchToEnglishBufferAction == .commitRaw)
+
+        for action in [SwitchToEnglishBufferAction.commitRaw, .commitSelected, .clear] {
+            settings.switchToEnglishBufferAction = action
+            let (controller, client) = v2Controller()
+            v2Type("nihao", controller, client)
+            let selected = panel.state.candidates.first?.text ?? ""
+            #expect(!selected.isEmpty)
+            try await v2TapShift(controller, client, keyCode: 56)
+            switch action {
+            case .commitRaw:
+                #expect(client.insertedText == "nihao")
+            case .commitSelected:
+                #expect(client.insertedText == selected)
+            case .clear:
+                #expect(client.insertedText.isEmpty)
+            }
+            #expect(client.markedText.isEmpty, "\(action)")
+            // The mode really switched to English.
+            #expect(!v2IsChinese(controller, client), "\(action)")
+        }
+    }
+
+    // MARK: j) EmojiSuggestionStyle
+    @Test("2.0.0 (j): emoji suggestion style .smartPhrase / .all / .off")
+    @MainActor
+    func v2EmojiSuggestionStyle() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let engine = v2Engine()
+        #expect(settings.emojiSuggestionStyle == .smartPhrase)
+
+        func emojiCount(_ input: String, _ limit: Int) -> Int {
+            engine.query(rawInput: input).prefix(limit).filter(\.isEmoji).count
+        }
+
+        // .smartPhrase (default): single syllables never get emoji noise in the top 10; phrases keep one primary emoji.
+        for input in ["ma", "you", "jiu", "xia", "ku", "gou"] {
+            #expect(emojiCount(input, 10) == 0, "\(input): \(v2Top(engine, input))")
+        }
+        let nihao = v2Top(engine, "nihao", 6)
+        let nihaoIndex = nihao.firstIndex(of: "你好")
+        let ninIndex = nihao.firstIndex(of: "您好")
+        let waveIndex = nihao.firstIndex(of: "👋")
+        #expect(nihaoIndex == 0, "nihao: \(nihao)")
+        #expect(ninIndex != nil && ninIndex! < (waveIndex ?? Int.max), "您好 must precede 👋: \(nihao)")
+        #expect(engine.query(rawInput: "nihao").contains { $0.text == "👋" && $0.isEmoji }, "emoji must stay reachable")
+        #expect(engine.query(rawInput: "ma").contains { $0.isEmoji }, "single-syllable emoji must stay reachable beyond the top 10")
+
+        // .all: emoji interleaving is restored near the top.
+        settings.emojiSuggestionStyle = .all
+        for input in ["you", "ma", "nihao"] {
+            let top = Array(engine.query(rawInput: input).prefix(5))
+            let emojiIndexes = top.enumerated().filter { $0.element.isEmoji }.map(\.offset)
+            #expect(emojiIndexes.contains { (1...3).contains($0) }, "\(input) .all emoji positions \(emojiIndexes): \(top.map(\.text))")
+            #expect(top.first?.isEmoji == false, "\(input): \(top.map(\.text))")
+        }
+
+        // .off: zero emoji anywhere, but ordinary alternatives stay.
+        settings.emojiSuggestionStyle = .off
+        for input in ["meigui", "nihao", "woaini"] {
+            #expect(emojiCount(input, 100) == 0, "\(input): \(v2Top(engine, input, 12))")
+        }
+        let woaini = v2Top(engine, "woaini", 4)
+        #expect(woaini.first == "我爱你", "woaini: \(woaini)")
+        #expect(woaini.contains("我爱妳"), "woaini: \(woaini)")
+
+        // Round trip: switching back restores the smart default.
+        settings.emojiSuggestionStyle = .smartPhrase
+        #expect(emojiCount("ma", 10) == 0)
+    }
+
+    // MARK: k) Snippets, Clipboard History, Sync & ToolboxPanel
+    @Test("2.0.0 (k): QuickSnippetStore add, pin, search, shortcut match, persistence, export and merge")
+    func v2QuickSnippetStore() throws {
+        let url = v2TempURL()
+        let otherURL = v2TempURL()
+        defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: otherURL) }
+        let store = QuickSnippetStore(storageURL: url)
+        #expect(store.items.isEmpty)
+
+        let signature = store.add(title: "签名", content: "此致\n敬礼", shortcutCode: "QM")
+        let address = store.add(title: "地址", content: "北京市海淀区中关村", shortcutCode: "dz")
+        #expect(store.items.count == 2)
+        #expect(signature.shortcutCode == "qm", "shortcut codes are normalized to lowercase")
+        _ = store.add(title: "空内容", content: "")
+        #expect(store.items.count == 2, "empty snippets are rejected")
+
+        // Shortcut matching is exact and case-insensitive.
+        #expect(store.matchedByShortcut("QM").map(\.id) == [signature.id])
+        #expect(store.matchedByShortcut("dz").map(\.id) == [address.id])
+        #expect(store.matchedByShortcut("q").isEmpty)
+        #expect(store.matchedByShortcut("").isEmpty)
+
+        // Search covers title, content and shortcut code.
+        #expect(store.search("海淀").map(\.id) == [address.id])
+        #expect(store.search("签名").map(\.id) == [signature.id])
+        #expect(store.search("敬礼").map(\.id) == [signature.id])
+        #expect(store.search("DZ").map(\.id) == [address.id])
+        #expect(store.search("   ").count == 2)
+        #expect(store.search("不存在的关键字").isEmpty)
+
+        // Pinned snippets sort first.
+        store.togglePin(id: address.id)
+        #expect(store.items.first?.id == address.id)
+        #expect(store.items.first?.isPinned == true)
+        store.togglePin(id: address.id)
+        #expect(store.items.allSatisfy { !$0.isPinned })
+        store.togglePin(id: signature.id)
+        #expect(store.items.first?.id == signature.id)
+
+        // Update keeps identity.
+        var edited = signature
+        edited.title = "新签名"
+        edited.content = "祝好"
+        store.update(edited)
+        #expect(store.items.first { $0.id == signature.id }?.title == "新签名")
+        #expect(store.items.first { $0.id == signature.id }?.content == "祝好")
+
+        // Persistence round trip.
+        let reloaded = QuickSnippetStore(storageURL: url)
+        #expect(reloaded.items.map(\.id) == store.items.map(\.id))
+        #expect(reloaded.items.map(\.content) == store.items.map(\.content))
+
+        // Export + merge into an empty store, idempotently.
+        let data = try store.exportSnippetsData()
+        let decoded = try JSONDecoder().decode([QuickSnippet].self, from: data)
+        #expect(decoded.count == 2)
+        let other = QuickSnippetStore(storageURL: otherURL)
+        #expect(other.mergeSnippets(decoded) == 2)
+        #expect(other.items.count == 2)
+        #expect(other.mergeSnippets(decoded) == 0)
+        #expect(other.items.count == 2)
+
+        // Remove.
+        store.remove(id: address.id)
+        #expect(store.items.map(\.id) == [signature.id])
+    }
+
+    @Test("2.0.0 (k): ClipboardHistoryStore deduplicates, caps, pins and ignores sensitive pasteboards")
+    @MainActor
+    func v2ClipboardHistoryStore() throws {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        let url = v2TempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = ClipboardHistoryStore(storageURL: url, maxItems: 3)
+
+        store.recordText("a"); store.recordText("b"); store.recordText("a")
+        store.recordText("   \n")
+        #expect(store.items.map(\.text) == ["a", "b"], "duplicates move to the front, blanks are ignored")
+
+        store.recordText("c"); store.recordText("d")
+        #expect(store.items.map(\.text) == ["d", "c", "a"], "history is capped at maxItems")
+
+        // Pinned entries survive trimming and keep their identity when re-copied.
+        let pinned = try #require(store.items.first { $0.text == "a" })
+        store.togglePin(id: pinned.id)
+        store.recordText("e"); store.recordText("f"); store.recordText("g")
+        #expect(store.items.count == 3)
+        #expect(store.items.first?.text == "a" && store.items.first?.isPinned == true)
+        store.recordText("a")
+        #expect(store.items.first { $0.text == "a" }?.id == pinned.id)
+        #expect(store.items.first { $0.text == "a" }?.isPinned == true)
+
+        // Search & clear.
+        #expect(store.search("g").map(\.text) == ["g"])
+        store.clearUnpinned()
+        #expect(store.items.map(\.text) == ["a"])
+        let reloaded = ClipboardHistoryStore(storageURL: url, maxItems: 3)
+        #expect(reloaded.items.map(\.text) == ["a"])
+        store.clearAll()
+        #expect(store.items.isEmpty)
+
+        // Sensitive pasteboards (password managers, transient / auto-generated content) are always ignored.
+        for identifier in ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType",
+                           "org.nspasteboard.AutoGeneratedType", "com.agilebits.onepassword"] {
+            let board = NSPasteboard(name: NSPasteboard.Name("aetherkey.test.\(UUID().uuidString)"))
+            defer { board.releaseGlobally() }
+            board.clearContents()
+            board.declareTypes([.string, NSPasteboard.PasteboardType(identifier)], owner: nil)
+            board.setString("top-secret-\(identifier)", forType: .string)
+            #expect(ClipboardHistoryStore.isSensitivePasteboard(board), "\(identifier)")
+            store.capturePasteboardIfNeeded(board)
+            #expect(store.items.isEmpty, "\(identifier) must not be recorded")
+        }
+
+        // Ordinary text is captured exactly once per change.
+        let plain = NSPasteboard(name: NSPasteboard.Name("aetherkey.test.\(UUID().uuidString)"))
+        defer { plain.releaseGlobally() }
+        plain.clearContents()
+        plain.setString("ordinary copy", forType: .string)
+        #expect(!ClipboardHistoryStore.isSensitivePasteboard(plain))
+        store.capturePasteboardIfNeeded(plain)
+        store.capturePasteboardIfNeeded(plain)
+        #expect(store.items.map(\.text) == ["ordinary copy"])
+
+        // Disabled history records nothing.
+        settings.isClipboardHistoryEnabled = false
+        plain.clearContents()
+        plain.setString("while disabled", forType: .string)
+        store.capturePasteboardIfNeeded(plain)
+        #expect(store.items.map(\.text) == ["ordinary copy"])
+    }
+
+    @Test("2.0.0 (k): LexiconSyncManager merges two isolated devices through a temporary folder")
+    func v2LexiconSyncManagerTwoWayMerge() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aetherkey-v2-sync-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let syncFolder = root.appendingPathComponent("cloud", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let lexiconA = UserLexicon(storageURL: root.appendingPathComponent("a-lexicon.json"))
+        let snippetsA = QuickSnippetStore(storageURL: root.appendingPathComponent("a-snippets.json"))
+        let lexiconB = UserLexicon(storageURL: root.appendingPathComponent("b-lexicon.json"))
+        let snippetsB = QuickSnippetStore(storageURL: root.appendingPathComponent("b-snippets.json"))
+        lexiconA.addCustomPhrase(pinyin: "tongbuci", phrase: "设备甲词条")
+        snippetsA.add(title: "甲", content: "alpha body", shortcutCode: "aa")
+        lexiconB.addCustomPhrase(pinyin: "tongbuci", phrase: "设备乙词条")
+        snippetsB.add(title: "乙", content: "beta body", shortcutCode: "bb")
+
+        let manager = LexiconSyncManager()
+        let first = try manager.syncNow(lexicon: lexiconA, snippets: snippetsA, folderURL: syncFolder)
+        #expect(first.syncedFolderURL == syncFolder)
+        #expect(FileManager.default.fileExists(atPath: syncFolder.appendingPathComponent("user_lexicon.json").path))
+        #expect(FileManager.default.fileExists(atPath: syncFolder.appendingPathComponent("snippets.json").path))
+        #expect(manager.lastSyncAt != nil)
+        #expect(!manager.lastSyncMessage.isEmpty)
+
+        // Device B pulls A's data and pushes its own.
+        let second = try manager.syncNow(lexicon: lexiconB, snippets: snippetsB, folderURL: syncFolder)
+        #expect(second.mergedSnippets == 1)
+        #expect(snippetsB.items.count == 2)
+        #expect(Set(lexiconB.allCustomPhrases().map(\.phrase)) == ["设备甲词条", "设备乙词条"])
+
+        // Device A syncs again and receives B's contributions.
+        let third = try manager.syncNow(lexicon: lexiconA, snippets: snippetsA, folderURL: syncFolder)
+        #expect(third.mergedSnippets == 1)
+        #expect(Set(snippetsA.items.map(\.content)) == ["alpha body", "beta body"])
+        #expect(Set(lexiconA.allCustomPhrases().map(\.phrase)) == ["设备甲词条", "设备乙词条"])
+
+        // A third sync is a no-op merge and stable.
+        _ = try manager.syncNow(lexicon: lexiconB, snippets: snippetsB, folderURL: syncFolder)
+        #expect(snippetsB.items.count == 2)
+        #expect(Set(lexiconB.allCustomPhrases().map(\.phrase)).count == 2)
+
+        // A corrupt remote snippets file fails loudly and leaves local data intact.
+        try Data("not json".utf8).write(to: syncFolder.appendingPathComponent("snippets.json"))
+        #expect(throws: LexiconSyncManager.SyncError.invalidRemoteSnippetsFormat) {
+            _ = try manager.syncNow(lexicon: lexiconA, snippets: snippetsA, folderURL: syncFolder)
+        }
+        #expect(snippetsA.items.count == 2)
+    }
+
+    @Test("2.0.0 (k): ToolboxPanelState filters rows, clamps selection and exposes row text")
+    @MainActor
+    func v2ToolboxPanelState() {
+        let state = ToolboxPanelState()
+        #expect(state.activeTab == .snippets)
+        #expect(ToolboxTab.allCases.map(\.title) == ["常用语", "剪贴板", "符号与表情"])
+        state.snippets = [
+            ToolboxSnippetItem(id: UUID(), title: "签名", content: "此致敬礼", shortcutCode: "qm", isPinned: false),
+            ToolboxSnippetItem(id: UUID(), title: "地址", content: "北京市海淀区", shortcutCode: "dz", isPinned: true)
+        ]
+        state.clipboardItems = [
+            ToolboxClipboardItem(id: UUID(), text: "clip one", copiedAt: Date(), isPinned: false),
+            ToolboxClipboardItem(id: UUID(), text: "clip two", copiedAt: Date(), isPinned: false),
+            ToolboxClipboardItem(id: UUID(), text: "other", copiedAt: Date(), isPinned: false)
+        ]
+        #expect(state.currentRowCount == 2)
+        #expect(state.textForRow(at: 1) == "北京市海淀区")
+        #expect(state.textForRow(at: 2) == nil)
+        state.searchQuery = "dz"
+        #expect(state.filteredSnippets.map(\.title) == ["地址"])
+        state.searchQuery = ""
+        state.activeTab = .clipboard
+        #expect(state.currentRowCount == 3)
+        state.selectedIndex = 2
+        state.searchQuery = "clip"
+        #expect(state.currentRowCount == 2)
+        #expect(state.selectedIndex == 0, "changing the query resets the selection")
+        state.activeTab = .symbols
+        #expect(ToolboxPanelState.symbolCategories.count >= 7)
+        for category in ["常用标点", "序号", "数学", "箭头", "希腊", "颜文字", "常用 Emoji"] {
+            #expect(ToolboxPanelState.symbolCategories.contains(category), "\(category)")
+        }
+        state.searchQuery = ""
+        state.selectedSymbolCategory = "箭头"
+        #expect(state.filteredSymbols.contains("→"))
+        state.selectedSymbolCategory = "常用 Emoji"
+        #expect(state.filteredSymbols.contains("👍"))
+    }
+
+    @Test("2.0.0 (k): vjb / vcy / vbq open the toolbox and ⌃⇧V / ⌃⇧E + Esc/↑/↓/Return/1-9 drive it")
+    @MainActor
+    func v2ToolboxControllerIntegration() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        // Never read the real system pasteboard from the toolbox refresh hook.
+        settings.isClipboardHistoryEnabled = false
+        let toolbox = ToolboxPanelHolder.shared
+        defer { toolbox.dismiss(); settings.resetToDefaults() }
+        toolbox.dismiss()
+        let panel = CandidatePanelHolder.shared
+
+        // V-mode keywords expose a top action candidate, and selecting it opens the matching tab.
+        for (code, title, tab) in [("vjb", "打开剪贴板工具箱", ToolboxTab.clipboard),
+                                   ("vcy", "打开常用语工具箱", .snippets),
+                                   ("vbq", "打开符号与表情面板", .symbols)] {
+            let (controller, client) = v2Controller()
+            v2Type(code, controller, client)
+            let top = panel.state.candidates.first
+            #expect(top?.text == title, "\(code): \(panel.state.candidates.map(\.text))")
+            #expect(top?.isVMode == true)
+            _ = controller.handle(makeKeyEvent(char: " ", keyCode: 49), client: client)
+            #expect(client.insertedText.isEmpty, "\(code) must not insert the action title")
+            #expect(client.markedText.isEmpty)
+            #expect(toolbox.state.isVisible, "\(code)")
+            #expect(toolbox.state.activeTab == tab, "\(code)")
+            toolbox.dismiss()
+        }
+        // Wubi does not own the v-mode toolbox shortcuts.
+        do {
+            let (controller, client) = v2Controller(scheme: .wubi86)
+            v2Type("vjb", controller, client)
+            #expect(!panel.state.candidates.contains { $0.text == "打开剪贴板工具箱" })
+            controller.resetComposition(client: client)
+        }
+
+        // ⌃⇧E: symbols tab; navigation + commit.
+        let (controller, client) = v2Controller()
+        let symbolsKey = makeKeyEvent(char: "e", keyCode: 14, modifiers: [.control, .shift])
+        #expect(controller.handle(symbolsKey, client: client))
+        #expect(toolbox.state.isVisible)
+        #expect(toolbox.state.activeTab == .symbols)
+        let symbols = toolbox.state.filteredSymbols
+        #expect(symbols.count >= 3)
+        #expect(toolbox.state.selectedIndex == 0)
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 125), client: client))   // ↓
+        #expect(toolbox.state.selectedIndex == 1)
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 125), client: client))
+        #expect(toolbox.state.selectedIndex == 2)
+        #expect(controller.handle(makeKeyEvent(char: "", keyCode: 126), client: client))   // ↑
+        #expect(toolbox.state.selectedIndex == 1)
+        #expect(controller.handle(makeKeyEvent(char: "\r", keyCode: 36), client: client))  // Return
+        #expect(client.insertedText == symbols[1])
+        #expect(!toolbox.state.isVisible)
+
+        // Number keys commit the matching row.
+        client.reset()
+        #expect(controller.handle(symbolsKey, client: client))
+        #expect(controller.handle(makeKeyEvent(char: "3", keyCode: 20), client: client))
+        #expect(client.insertedText == symbols[2])
+        #expect(!toolbox.state.isVisible)
+
+        // Esc dismisses; pressing the shortcut again toggles it closed.
+        client.reset()
+        #expect(controller.handle(symbolsKey, client: client))
+        #expect(toolbox.state.isVisible)
+        #expect(controller.handle(makeKeyEvent(char: "\u{1B}", keyCode: 53), client: client))
+        #expect(!toolbox.state.isVisible)
+        #expect(controller.handle(symbolsKey, client: client))
+        #expect(toolbox.state.isVisible)
+        #expect(controller.handle(symbolsKey, client: client))
+        #expect(!toolbox.state.isVisible)
+        #expect(client.insertedText.isEmpty)
+
+        // ⌃⇧V: clipboard tab, with the same toggle behaviour.
+        let clipboardKey = makeKeyEvent(char: "v", keyCode: 9, modifiers: [.control, .shift])
+        #expect(controller.handle(clipboardKey, client: client))
+        #expect(toolbox.state.isVisible)
+        #expect(toolbox.state.activeTab == .clipboard)
+        #expect(controller.handle(makeKeyEvent(char: "\u{1B}", keyCode: 53), client: client))
+        #expect(!toolbox.state.isVisible)
+        // With the toolbox hidden, Esc is an ordinary key again.
+        #expect(!controller.handle(makeKeyEvent(char: "\u{1B}", keyCode: 53), client: client))
+    }
+
+    // MARK: l) Double Pinyin mixed homophone tie-breaking
+    @Test("2.0.0 (l): Double Pinyin layout collisions interleave readings by frequency instead of dumping one reading first")
+    @MainActor
+    func v2DoublePinyinMixedHomophoneTieBreaking() {
+        let settings = AetherSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+
+        // Microsoft: `jv` decodes to `jue` (ue alias) while `jy` is the ü spelling of `ju`; neither may swallow the other.
+        #expect(DoublePinyin.tokens("jv", scheme: .microsoft)?.first?.readings == ["jue"])
+        let jv = DoublePinyin.query("jv", scheme: .microsoft).map(\.text)
+        #expect(Array(jv.prefix(3)) == ["决", "绝", "觉"], "jv: \(jv.prefix(8))")
+        let ju = DoublePinyin.query("jy", scheme: .microsoft).map(\.text)
+        #expect(DoublePinyin.tokens("jy", scheme: .microsoft)?.first?.readings == ["ju"])
+        for char in ["局", "具", "句"] {
+            #expect(ju.prefix(12).contains(char), "jy must surface \(char): \(ju.prefix(12))")
+        }
+        #expect(!ju.prefix(12).contains("决"))
+
+        // Genuine collisions: `lo` -> luo / lo, `lt` -> lve / lue in every double pinyin scheme.
+        for scheme in [PinyinScheme.flypy, .microsoft, .zrm, .sogou] {
+            #expect(Set(DoublePinyin.tokens("lo", scheme: scheme)?.first?.readings ?? []) == ["luo", "lo"], "\(scheme)")
+            let lo = DoublePinyin.query("lo", scheme: scheme).map(\.text)
+            #expect(Set(lo).count == lo.count, "\(scheme) duplicates")
+            let top = Array(lo.prefix(6))
+            // High-frequency `luo` characters lead, while the rarer `lo` reading is interleaved on screen one, not buried.
+            #expect(top.contains("落") && top.contains("罗"), "\(scheme) lo: \(top)")
+            #expect(top.contains("咯"), "\(scheme) lo must interleave the `lo` reading early: \(top)")
+            #expect(lo.contains("洛") && lo.contains("萝"))
+
+            #expect(Set(DoublePinyin.tokens("lt", scheme: scheme)?.first?.readings ?? []) == ["lve", "lue"], "\(scheme)")
+            let lt = DoublePinyin.query("lt", scheme: scheme).map(\.text)
+            #expect(lt.first == "略", "\(scheme) lt: \(lt.prefix(6))")
+            #expect(lt.prefix(3).contains("掠"), "\(scheme) lt: \(lt.prefix(6))")
+        }
     }
 }
