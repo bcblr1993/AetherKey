@@ -281,6 +281,12 @@ public struct PreferencesView: View {
                 }
                 Divider()
                 settingToggleRow(title: "四方向键选词", desc: "← / ↑ 选上一个，→ / ↓ 选下一个。⌥ ← / → 仍可编辑输入编码。", isOn: $settings.isFourArrowSelectionEnabled)
+                Divider()
+                settingToggleRow(
+                    title: "在菜单栏常驻 AetherKey 快捷图标",
+                    desc: "默认在系统输入法启用后隐藏独立图标避免重复；开启后即使切换到其他输入法，也能从菜单栏直接打开设置或切回 AetherKey。",
+                    isOn: $settings.isAlwaysShowMenuBarIconEnabled
+                )
             }
 
             settingsGroup("排序与中英混输", icon: "sparkles") {

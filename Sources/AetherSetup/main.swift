@@ -3,9 +3,9 @@ import SwiftUI
 
 final class SetupDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { !InstallationManager.shared.isInstalling }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { !InstallationManager.shared.isBusy }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        InstallationManager.shared.isInstalling ? .terminateCancel : .terminateNow
+        InstallationManager.shared.isBusy ? .terminateCancel : .terminateNow
     }
 }
 

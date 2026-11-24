@@ -68,7 +68,7 @@ AetherKey ${VERSION} — 原生 macOS 中文拼音输入法
 输入法安装在 ~/Library/Input Methods/AetherKey.app。
 词库和偏好保存在本机，更新安装会保留；无需注册账号。
 更新可从输入法菜单或偏好设置中选择「检查更新」，按提示安装并重新启动。
-完整帮助与卸载说明见官网。自动检查可在偏好设置中关闭；此版本暂不包含云端词库同步。
+完整帮助与卸载说明见官网或安装向导（覆盖升级或卸载重装会自动刷新系统输入法菜单）。支持本机 / iCloud 文件夹双向同步，自动更新检查可在偏好设置中关闭。
 GUIDE
 hdiutil create -fs HFS+ -volname "AetherKey ${VERSION}" -srcfolder "$STAGE" -format UDZO "$DMG" > "$OUT/dmg.log"
 codesign --timestamp --sign "$IDENTITY" "$DMG"

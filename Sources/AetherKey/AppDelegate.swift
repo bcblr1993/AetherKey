@@ -8,6 +8,12 @@ import InputMethodKit
 public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
+    private let didRefreshBundleOnLaunch: Bool
+
+    public init(didRefreshBundleOnLaunch: Bool = false) {
+        self.didRefreshBundleOnLaunch = didRefreshBundleOnLaunch
+        super.init()
+    }
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Pre-warm the 530k+ lexicon, language model, English mix, U-mode chaizi & Wubi table in background
@@ -29,6 +35,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
         setupStatusMenu()
         updateStatusItemVisibility()
+        if didRefreshBundleOnLaunch {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                _ = await InputMethodRegistrar.registerAndCycleEnable(
+                    bundleURL: Bundle.main.bundleURL,
+                    forceCycleEnable: true,
+                    selectAfterEnable: true
+                )
+                self?.updateStatusItemVisibility()
+            }
+        }
+        AetherSettings.shared.$isAlwaysShowMenuBarIconEnabled
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemVisibility()
+            }
+            .store(in: &cancellables)
         
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -48,29 +72,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         updateStatusItemVisibility()
     }
     
-    /// Hides the standalone status item when AetherKey is already enabled in the system Input Menu,
-    /// avoiding duplicate menu bar icons alongside macOS's native TextInputMenuAgent.
+    /// Hides the standalone status item when AetherKey is already enabled in the system Input Menu
+    /// (unless the user opts to keep the shortcut icon visible), avoiding duplicate menu bar icons.
     private func updateStatusItemVisibility() {
-        let filter = [kTISPropertyInputSourceID as String: "com.aethernative.inputmethod.AetherKey.Hans"] as CFDictionary
-        var isEnabled = false
-        if let list = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
-           let source = list.first,
-           let ptr = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsEnabled) {
-            isEnabled = CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(ptr).takeUnretainedValue())
-        }
-        statusItem?.isVisible = !isEnabled
+        let isEnabled = InputMethodRegistrar.isAetherKeyEnabled()
+        statusItem?.isVisible = !isEnabled || AetherSettings.shared.isAlwaysShowMenuBarIconEnabled
     }
     
     /// Clears CarbonCore's in-memory `AppleIntlFileCacheModificationDatePasteboard` so sandboxed
     /// extensions like `KeyboardSettings.appex` immediately detect `~/Library/Input Methods/AetherKey.app`.
     private func invalidateIntlFileCacheModificationPasteboard() {
-        var pb: Pasteboard?
-        if PasteboardCreate("AppleIntlFileCacheModificationDatePasteboard" as CFString, &pb) == noErr, let pb = pb {
-            PasteboardClear(pb)
-            PasteboardSynchronize(pb)
-        }
-        let bundleURL = Bundle.main.bundleURL as CFURL
-        TISRegisterInputSource(bundleURL)
+        InputMethodRegistrar.invalidateIntlFileCache()
+        TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
     }
     
     /// Use the same brand geometry as the system input-source resource.
@@ -135,6 +148,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let syncItem = NSMenuItem(title: "立即同步词库与常用语", action: #selector(syncLexiconNow), keyEquivalent: "")
         syncItem.target = self
         menu.addItem(syncItem)
+
+        let refreshMenuItem = NSMenuItem(title: "刷新系统输入法菜单", action: #selector(refreshSystemInputMenu), keyEquivalent: "")
+        refreshMenuItem.target = self
+        menu.addItem(refreshMenuItem)
 
         let updateItem = NSMenuItem(title: "检查更新…", action: #selector(UpdateController.checkForUpdates), keyEquivalent: "")
         updateItem.target = UpdateController.shared
@@ -205,35 +222,29 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     }
     
     @objc private func activateAndSwitchInputMethod() {
-        invalidateIntlFileCacheModificationPasteboard()
-        
-        guard let listRef = TISCreateInputSourceList(nil, true)?.takeRetainedValue() as? [TISInputSource] else {
-            return
+        Task { @MainActor [weak self] in
+            _ = await InputMethodRegistrar.registerAndCycleEnable(
+                bundleURL: Bundle.main.bundleURL,
+                forceCycleEnable: false,
+                selectAfterEnable: true
+            )
+            self?.updateStatusItemVisibility()
         }
-        var parentSource: TISInputSource?
-        var hansSource: TISInputSource?
-        for source in listRef {
-            if let ptr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) {
-                let id = Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
-                if id == "com.aethernative.inputmethod.AetherKey" {
-                    parentSource = source
-                } else if id == "com.aethernative.inputmethod.AetherKey.Hans" {
-                    hansSource = source
-                }
-            }
-        }
-        if let parent = parentSource {
-            var parentEnabled = false
-            if let enabledPtr = TISGetInputSourceProperty(parent, kTISPropertyInputSourceIsEnabled) {
-                parentEnabled = CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(enabledPtr).takeUnretainedValue())
-            }
-            if !parentEnabled {
-                _ = TISEnableInputSource(parent)
-                return
-            }
-        }
-        if let hans = hansSource {
-            _ = TISSelectInputSource(hans)
+    }
+
+    @objc private func refreshSystemInputMenu() {
+        Task { @MainActor [weak self] in
+            let ok = await InputMethodRegistrar.refreshSystemAndReenable(
+                bundleURL: Bundle.main.bundleURL,
+                selectAfterRefresh: true
+            )
+            self?.updateStatusItemVisibility()
+            StatusHUDHolder.shared.show(
+                badge: ok ? "刷新" : "提醒",
+                title: ok ? "系统输入法菜单已刷新" : "已刷新，若仍未显示请在键盘设置中重新添加",
+                isAccent: ok,
+                anchorRect: nil
+            )
         }
     }
     

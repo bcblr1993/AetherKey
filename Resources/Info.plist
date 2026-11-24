@@ -25,9 +25,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.0</string>
+    <string>2.0.1</string>
     <key>CFBundleVersion</key>
-    <string>2026112301</string>
+    <string>2026112401</string>
     <key>SUPublicEDKey</key>
     <string>+7eRUcpR39mrlReC1QPjuEEtIXSBq/qWj5hSzVqPJWQ=</string>
     <key>SUFeedURL</key>
@@ -49,7 +49,7 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>InputMethodConnectionName</key>
-    <string>com.aethernative.inputmethod.AetherKey_1_Connection</string>
+    <string>com.aethernative.inputmethod.AetherKey_Connection</string>
     <key>InputMethodServerControllerClass</key>
     <string>AetherInputController</string>
     <key>InputMethodServerDelegateClass</key>

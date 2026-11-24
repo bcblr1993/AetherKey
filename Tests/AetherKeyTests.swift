@@ -713,7 +713,7 @@ struct AetherKeyEngineTests {
         // 1. Language region & Top-level TISIntendedLanguage
         #expect(plist["CFBundleDevelopmentRegion"] as? String == "zh-Hans")
         #expect(plist["TISIntendedLanguage"] as? String == "zh-Hans")
-        #expect(plist["InputMethodConnectionName"] as? String == "com.aethernative.inputmethod.AetherKey_1_Connection")
+        #expect(plist["InputMethodConnectionName"] as? String == "com.aethernative.inputmethod.AetherKey_Connection")
         #expect(plist["InputMethodServerControllerClass"] as? String == "AetherInputController")
         
         // 2. Character Repertoire must be Hans (Simplified Chinese)
@@ -3965,5 +3965,86 @@ extension CompositionEditingTests {
             #expect(lt.first == "略", "\(scheme) lt: \(lt.prefix(6))")
             #expect(lt.prefix(3).contains("掠"), "\(scheme) lt: \(lt.prefix(6))")
         }
+    }
+
+    // MARK: - 2.0.1 InputMethodRegistrar & Persistent Menu Bar Setting
+    @Test("2.0.1: InputMethodRegistrar path guard, inode fingerprint detection across overwrite/reinstall, and isolated persistence")
+    func v201InputMethodRegistrarFingerprintAndPathGuard() throws {
+        let fm = FileManager.default
+        let tempHome = fm.temporaryDirectory.appendingPathComponent("AetherRegistrarTest-\(UUID().uuidString)")
+        try fm.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tempHome) }
+
+        let userInstalled = tempHome.appendingPathComponent("Library/Input Methods/AetherKey.app")
+        let systemInstalled = URL(fileURLWithPath: "/Library/Input Methods/AetherKey.app")
+        let workspaceBuild = URL(fileURLWithPath: "/tmp/DerivedData/Build/Products/Debug/AetherKey.app")
+        let applicationsWrongPath = URL(fileURLWithPath: "/Applications/AetherKey.app")
+
+        #expect(InputMethodRegistrar.isInstalledInputMethodPath(userInstalled, homeDirectory: tempHome))
+        #expect(InputMethodRegistrar.isInstalledInputMethodPath(systemInstalled, homeDirectory: tempHome))
+        #expect(!InputMethodRegistrar.isInstalledInputMethodPath(workspaceBuild, homeDirectory: tempHome))
+        #expect(!InputMethodRegistrar.isInstalledInputMethodPath(applicationsWrongPath, homeDirectory: tempHome))
+
+        func createMockBundle(at url: URL, version: String, build: String) throws {
+            let contents = url.appendingPathComponent("Contents")
+            let macos = contents.appendingPathComponent("MacOS")
+            try fm.createDirectory(at: macos, withIntermediateDirectories: true)
+            let plist: [String: Any] = [
+                "CFBundleIdentifier": InputMethodRegistrar.bundleID,
+                "CFBundleShortVersionString": version,
+                "CFBundleVersion": build,
+            ]
+            let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            try data.write(to: contents.appendingPathComponent("Info.plist"))
+            try Data("#!/bin/sh\n".utf8).write(to: macos.appendingPathComponent("AetherKey"))
+        }
+
+        // 1. Fresh install generates a stable fingerprint and triggers first-time registration.
+        try createMockBundle(at: userInstalled, version: "2.0.1", build: "2026112401")
+        let fp1 = try #require(InputMethodRegistrar.bundleFingerprint(at: userInstalled))
+        #expect(fp1.hasPrefix("2.0.1|2026112401|"))
+        #expect(InputMethodRegistrar.shouldRefreshForBundleChange(currentFingerprint: fp1, lastRecordedFingerprint: nil))
+        #expect(!InputMethodRegistrar.shouldRefreshForBundleChange(currentFingerprint: fp1, lastRecordedFingerprint: fp1))
+
+        // 2. Simulated overwrite install (same version/build, atomic swap producing new directory/binary inodes) must trigger refresh.
+        let stage = tempHome.appendingPathComponent("stage/AetherKey.app")
+        try createMockBundle(at: stage, version: "2.0.1", build: "2026112401")
+        try fm.removeItem(at: userInstalled)
+        try fm.moveItem(at: stage, to: userInstalled)
+        let fpOverwrite = try #require(InputMethodRegistrar.bundleFingerprint(at: userInstalled))
+        #expect(fpOverwrite != fp1)
+        #expect(InputMethodRegistrar.shouldRefreshForBundleChange(currentFingerprint: fpOverwrite, lastRecordedFingerprint: fp1))
+
+        // 3. Simulated uninstall + reinstall with isolated UserDefaults suite.
+        let suiteName = "com.aethernative.tests.\(UUID().uuidString)"
+        let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        InputMethodRegistrar.recordRegisteredFingerprint(fpOverwrite, defaults: isolatedDefaults)
+        #expect(InputMethodRegistrar.lastRecordedFingerprint(defaults: isolatedDefaults) == fpOverwrite)
+
+        InputMethodRegistrar.clearRecordedFingerprint(defaults: isolatedDefaults)
+        #expect(InputMethodRegistrar.lastRecordedFingerprint(defaults: isolatedDefaults) == nil)
+        #expect(InputMethodRegistrar.shouldRefreshForBundleChange(
+            currentFingerprint: fpOverwrite,
+            lastRecordedFingerprint: InputMethodRegistrar.lastRecordedFingerprint(defaults: isolatedDefaults)
+        ))
+    }
+
+    @Test("2.0.1: isAlwaysShowMenuBarIconEnabled defaults false, persists, and resets to false")
+    func v201AlwaysShowMenuBarIconSetting() throws {
+        let suiteName = "com.aethernative.tests.menubar.\(UUID().uuidString)"
+        let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AetherSettings(defaults: isolatedDefaults)
+        #expect(!settings.isAlwaysShowMenuBarIconEnabled)
+
+        settings.isAlwaysShowMenuBarIconEnabled = true
+        let reloaded = AetherSettings(defaults: isolatedDefaults)
+        #expect(reloaded.isAlwaysShowMenuBarIconEnabled)
+
+        reloaded.resetToDefaults()
+        #expect(!reloaded.isAlwaysShowMenuBarIconEnabled)
     }
 }

@@ -13,11 +13,24 @@ var appDelegate: AppDelegate?
 
 if !isTesting {
     let bundleID = Bundle.main.bundleIdentifier ?? "com.aethernative.inputmethod.AetherKey"
-    let kConnectionName = (Bundle.main.infoDictionary?["InputMethodConnectionName"] as? String) ?? "\(bundleID)_1_Connection"
+    let bundleURL = Bundle.main.bundleURL
+    var didRefreshBundleOnLaunch = false
+    if InputMethodRegistrar.isInstalledInputMethodPath(bundleURL),
+       let fingerprint = InputMethodRegistrar.bundleFingerprint(at: bundleURL),
+       InputMethodRegistrar.shouldRefreshForBundleChange(
+           currentFingerprint: fingerprint,
+           lastRecordedFingerprint: InputMethodRegistrar.lastRecordedFingerprint()
+       ) {
+        InputMethodRegistrar.recordRegisteredFingerprint(fingerprint)
+        InputMethodRegistrar.prepareFreshSystemAgentsSynchronously(bundleURL: bundleURL)
+        didRefreshBundleOnLaunch = true
+    }
+
+    let kConnectionName = (Bundle.main.infoDictionary?["InputMethodConnectionName"] as? String) ?? "\(bundleID)_Connection"
 
     server = IMKServer(name: kConnectionName, bundleIdentifier: bundleID)
 
-    let delegate = AppDelegate()
+    let delegate = AppDelegate(didRefreshBundleOnLaunch: didRefreshBundleOnLaunch)
     appDelegate = delegate
     app.delegate = delegate
 }

@@ -65,6 +65,7 @@
 		B6AE630DAFA665B63AA83121 /* zh-Hans.lproj in Resources */ = {isa = PBXBuildFile; fileRef = F2EF26465CE46BD201D01E48 /* zh-Hans.lproj */; };
 		B6D983E6BC88C17A6BAD9123 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D9A3A573D9A92F43E30230 /* main.swift */; };
 		BC628ED0085B089F0A6FA387 /* chaizi.json in Resources */ = {isa = PBXBuildFile; fileRef = CCDD631BAB308453FA4386A5 /* chaizi.json */; };
+		BFE786AD8DF118B725B8F3D3 /* InputMethodRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515B76B2C0D404AB37F4BB49 /* InputMethodRegistrar.swift */; };
 		C452783A8736462781CE797E /* CandidateViewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036B7C18F75F165B3474CC68 /* CandidateViewMode.swift */; };
 		C520B5433F07198FC0FF6CA6 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C69E82FAEAECADC8BF26A9 /* PreferencesView.swift */; };
 		C5CA4C69355871AA81C868ED /* VModeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F59631917A3377A23C34E8 /* VModeCalculator.swift */; };
@@ -73,6 +74,7 @@
 		CCBC463879BB4EE878E211C8 /* ClipboardAndSnippetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B5572C7DBB03BB4F86EADB /* ClipboardAndSnippetStore.swift */; };
 		CF1C25537262656F4D8949C0 /* LanguageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF569D9A03FEDDFE1132EB9D /* LanguageModel.swift */; };
 		D2D0AE14EC2C30A7E83F4B78 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF9550AF9F27DEB21E16057 /* AppDelegate.swift */; };
+		D37277EF81D85A9852AEF729 /* InputMethodRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515B76B2C0D404AB37F4BB49 /* InputMethodRegistrar.swift */; };
 		D976566B48B56DB601E89CC5 /* ChineseScriptConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E94FB22182D641E5225B9DF /* ChineseScriptConverter.swift */; };
 		DAEC6736ABC78E5F97692B65 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA9C51B6D466A76F225F2E5 /* SmartPunctuation.swift */; };
 		DBD964B6271EA2F930DC360C /* characters-source.json in Resources */ = {isa = PBXBuildFile; fileRef = D531CEAA94BFFFDC9AA58543 /* characters-source.json */; };
@@ -116,6 +118,7 @@
 		461856C08FBEE64B1CBB509B /* menubar.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = menubar.pdf; sourceTree = "<group>"; };
 		48015F6F10ABAE156A723DFC /* characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = characters.json; sourceTree = "<group>"; };
 		508F1636AA8FA2FED2A9B0D7 /* InputMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMode.swift; sourceTree = "<group>"; };
+		515B76B2C0D404AB37F4BB49 /* InputMethodRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodRegistrar.swift; sourceTree = "<group>"; };
 		51B9CEDB3F1B46CE87ECCCDC /* UModeChaiziEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UModeChaiziEngine.swift; sourceTree = "<group>"; };
 		5BDA006DDB2CDBAABD6C1ED2 /* Candidate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Candidate.swift; sourceTree = "<group>"; };
 		6890B4DCEA40AED6210BB3AA /* SetupWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupWizardView.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 				7BCD3995DF9B02DCE15AB65C /* DoublePinyin.swift */,
 				E747FB7796928B423D825813 /* EmojiLexicon.swift */,
 				3E191E12A60CDF097D260326 /* EnglishMixEngine.swift */,
+				515B76B2C0D404AB37F4BB49 /* InputMethodRegistrar.swift */,
 				DF569D9A03FEDDFE1132EB9D /* LanguageModel.swift */,
 				8F79A6466D11F64EBD478544 /* LexiconSyncManager.swift */,
 				A0CF2B18E8DCA8D333122C39 /* PanguSpacing.swift */,
@@ -456,6 +460,7 @@
 				9F45FCC2759A6CD4C6FC5F19 /* EmojiLexicon.swift in Sources */,
 				0AB36FDD35F4169FADD0043D /* EnglishMixEngine.swift in Sources */,
 				10D8ABA9CDE28FC66D98346B /* InputController.swift in Sources */,
+				D37277EF81D85A9852AEF729 /* InputMethodRegistrar.swift in Sources */,
 				24106657FD9FBF0340966B70 /* InputMode.swift in Sources */,
 				9A3DF1111CAAF3D56C69571B /* LanguageModel.swift in Sources */,
 				713FAEE1A42CAE1FF2FD5F75 /* LexiconSyncManager.swift in Sources */,
@@ -492,6 +497,7 @@
 				90D608A401EAFEBA6FF2E497 /* DoublePinyin.swift in Sources */,
 				92570465FC57861E02858AA7 /* EmojiLexicon.swift in Sources */,
 				4082D0DF266E1B6F715C24F7 /* EnglishMixEngine.swift in Sources */,
+				BFE786AD8DF118B725B8F3D3 /* InputMethodRegistrar.swift in Sources */,
 				832217C310ABE35D719AE0B2 /* InputMode.swift in Sources */,
 				8E9A406086127F81882360CA /* InstallationManager.swift in Sources */,
 				CF1C25537262656F4D8949C0 /* LanguageModel.swift in Sources */,
@@ -596,7 +602,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026112301;
+				CURRENT_PROJECT_VERSION = 2026112401;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -609,7 +615,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -655,7 +661,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026112301;
+				CURRENT_PROJECT_VERSION = 2026112401;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -674,7 +680,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

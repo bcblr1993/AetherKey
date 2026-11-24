@@ -128,3 +128,10 @@ xcodebuild -project AetherKey.xcodeproj -scheme AetherSetup -configuration Relea
 - **高频快捷键与选词交互**：新增可选 `,` / `.` 候选翻页、`[` / `]` 以词定字（取当前候选首字/尾字）与 `;` 快速选第二候选；支持左/右 `Shift`、大小写锁定（`Caps Lock`）以及切换英文时的缓冲区处理动作配置。
 - **快捷短语、隐私过滤剪贴板历史与百宝箱面板**：新增全局百宝箱面板（`⌃⇧V` 剪贴板历史、`⌃⇧E` 快捷短语/表情，或在输入流中使用 `vjb` / `vcy` / `vbq` 呼出），剪贴板历史支持密码管理器与隐私来源过滤，支持常用短语模板一键上屏。
 - **本地 / iCloud 文件夹双向同步**：支持将个人词库、自定义短语、置顶/忽略记录与配置与指定本地目录或 iCloud Drive 文件夹双向自动同步，无账号依赖即可在多台 Mac 间安全共享词库。
+
+### 系统输入法菜单稳定性与安装体验修复（2.0.1）
+
+- **杜绝覆盖升级、重复安装或卸载重装后从菜单栏消失**：新增 `InputMethodRegistrar` 安装包路径与 inode 指纹监测机制；无论是通过安装向导覆盖安装、卸载重装还是通过 Sparkle 应用内升级，在初始化 `IMKServer` 前自动清理隔离属性、刷新 LaunchServices / `IntlFileCache` 并重启持有旧版文件描述符的 `imklaunchagent`、`TextInputSwitcher`、`TextInputMenuAgent`，同步完成 Carbon `TIS` 重注册与重启用循环。
+- **修复 macOS 27 `InputMethodConnectionName` 校验拒绝报错**：将 `Info.plist` 与 `main.swift` 的连接名统一为符合系统校验规范的 `com.aethernative.inputmethod.AetherKey_Connection`，消除首次切换进入应用时的 `Request for Endpoint Invalid` 报错。
+- **安装向导支持安全卸载、重复安装与一键修复**：`安装 AetherKey.app` 新增保留用户词库与偏好的「卸载 AetherKey」确认操作、安装前自动切离当前会话并清理孤立进程，以及「刷新系统输入法菜单」修复入口。
+- **菜单栏与设置自愈入口**：通用设置新增「在菜单栏常驻 AetherKey 快捷图标」开关；输入法菜单、独立状态栏菜单与「更新与启动」设置页均提供「刷新系统输入法菜单」按钮。

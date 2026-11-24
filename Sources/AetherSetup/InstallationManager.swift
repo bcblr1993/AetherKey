@@ -13,11 +13,16 @@ public final class InstallationManager: ObservableObject {
     @Published public var isSourceAdded = false
     @Published public var isCurrentSource = false
     @Published public var isInstalling = false
+    @Published public var isUninstalling = false
+    @Published public var isRepairing = false
     @Published public var installPhase = 0
     @Published public var errorMessage: String?
+    @Published public var noticeMessage: String?
     @Published public var activationHint: String?
     @Published public var statusMessage = "准备开始"
     public let isPreview: Bool
+
+    public var isBusy: Bool { isInstalling || isUninstalling || isRepairing }
 
     private let targetDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Input Methods")
@@ -62,35 +67,42 @@ public final class InstallationManager: ObservableObject {
     }
 
     public func install() {
-        guard !isInstalling, !isPreview else { return }
+        guard !isBusy, !isPreview else { return }
         isInstalling = true
         installPhase = 0
         errorMessage = nil
+        noticeMessage = nil
+        activationHint = nil
         Task {
             do {
                 guard let source = Bundle.main.url(forResource: "AetherKey", withExtension: "app"),
-                      Bundle(url: source)?.bundleIdentifier == Self.bundleID else {
+                      Bundle(url: source)?.bundleIdentifier == Self.bundleID,
+                      FileManager.default.fileExists(atPath: source.appendingPathComponent("Contents/MacOS/AetherKey").path) else {
                     throw SetupError.message("安装包缺少输入法组件，请重新下载完整的 AetherKey DMG。")
                 }
                 installPhase = 1
-                // Only stop this input method, never the setup app or unrelated processes.
+                // Switch away from AetherKey before replacing the bundle so macOS releases active IMK clients.
+                InputMethodRegistrar.switchAwayFromAetherKeyIfActive()
                 let running = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == Self.bundleID }
                 running.forEach { _ = $0.terminate() }
-                for _ in 0..<20 {
-                    if running.allSatisfy(\.isTerminated) { break }
-                    try await Task.sleep(for: .milliseconds(100))
-                }
-                guard running.allSatisfy(\.isTerminated) else {
-                    throw SetupError.message("输入法仍在使用中。请先切换到其他输入法，再点击重试。")
-                }
+
                 let destination = targetAppURL
                 let directory = targetDir
                 try await Task.detached(priority: .userInitiated) {
+                    _ = InputMethodRegistrar.terminateRunningAetherKeyProcesses()
                     let fm = FileManager.default
                     try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+                    if let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+                        for item in items where item.lastPathComponent.hasPrefix(".AetherKey-") {
+                            try? fm.removeItem(at: item)
+                        }
+                    }
+
                     let stage = directory.appendingPathComponent(".AetherKey-stage-" + UUID().uuidString)
                     defer { try? fm.removeItem(at: stage) }
                     try fm.copyItem(at: source, to: stage)
+                    InputMethodRegistrar.clearQuarantineAttribute(at: stage)
+
                     if fm.fileExists(atPath: destination.path) {
                         // Keep the previous version recoverable and restore it if replacement fails.
                         let backupDir = directory.appendingPathComponent(".AetherKey-replacement-" + UUID().uuidString)
@@ -100,8 +112,7 @@ public final class InstallationManager: ObservableObject {
                         do {
                             try fm.moveItem(at: stage, to: destination)
                             try? fm.removeItem(at: backupDir)
-                        }
-                        catch {
+                        } catch {
                             try fm.moveItem(at: backup, to: destination)
                             try? fm.removeItem(at: backupDir)
                             throw error
@@ -110,16 +121,36 @@ public final class InstallationManager: ObservableObject {
                         try fm.moveItem(at: stage, to: destination)
                     }
                 }.value
+
                 installPhase = 2
-                let registration = TISRegisterInputSource(destination as CFURL)
-                guard registration == noErr else {
-                    throw SetupError.message("文件已安装，但 macOS 暂未完成注册（\(registration)）。请重试；如仍未出现，可注销并重新登录后继续设置。")
+                await Task.detached(priority: .userInitiated) {
+                    InputMethodRegistrar.invalidateIntlFileCache()
+                    InputMethodRegistrar.registerWithLaunchServices(bundleURL: destination)
+                    InputMethodRegistrar.restartStaleSystemInputAgentsSynchronously()
+                }.value
+
+                if let fingerprint = InputMethodRegistrar.bundleFingerprint(at: destination) {
+                    InputMethodRegistrar.recordRegisteredFingerprint(fingerprint)
                 }
-                try await NSWorkspace.shared.openApplication(at: destination, configuration: NSWorkspace.OpenConfiguration())
+
+                let cycleResult = await InputMethodRegistrar.registerAndCycleEnable(
+                    bundleURL: destination,
+                    forceCycleEnable: true,
+                    selectAfterEnable: false
+                )
+                guard cycleResult.registered == noErr else {
+                    throw SetupError.message("文件已安装，但 macOS 暂未完成注册（\(cycleResult.registered)）。请重试；如仍未出现，可注销并重新登录后继续设置。")
+                }
+
+                try await launchInstalledApp(destination)
+                try? await Task.sleep(for: .milliseconds(400))
+                _ = await InputMethodRegistrar.selectAetherKeyWithRetry()
+
                 installPhase = 3
                 checkStatus()
                 guard isInstalled else { throw SetupError.message("未能确认安装结果，请重试。") }
                 isInstalling = false
+                noticeMessage = "已完成安装并刷新系统输入法服务。"
                 currentStep = 2
             } catch {
                 isInstalling = false
@@ -129,23 +160,95 @@ public final class InstallationManager: ObservableObject {
         }
     }
 
+    public func uninstall() {
+        guard !isBusy, !isPreview else { return }
+        isUninstalling = true
+        errorMessage = nil
+        noticeMessage = nil
+        activationHint = nil
+        Task {
+            do {
+                InputMethodRegistrar.switchAwayFromAetherKeyIfActive()
+                InputMethodRegistrar.disableInputSources()
+                let running = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == Self.bundleID }
+                running.forEach { _ = $0.terminate() }
+
+                let destination = targetAppURL
+                let directory = targetDir
+                try await Task.detached(priority: .userInitiated) {
+                    _ = InputMethodRegistrar.terminateRunningAetherKeyProcesses()
+                    InputMethodRegistrar.unregisterWithLaunchServices(bundleURL: destination)
+                    let fm = FileManager.default
+                    if fm.fileExists(atPath: destination.path) {
+                        try fm.removeItem(at: destination)
+                    }
+                    if let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+                        for item in items where item.lastPathComponent.hasPrefix(".AetherKey-") {
+                            try? fm.removeItem(at: item)
+                        }
+                    }
+                    InputMethodRegistrar.clearRecordedFingerprint()
+                    InputMethodRegistrar.invalidateIntlFileCache()
+                    InputMethodRegistrar.restartStaleSystemInputAgentsSynchronously()
+                }.value
+
+                installPhase = 0
+                isUninstalling = false
+                checkStatus()
+                noticeMessage = "已卸载 AetherKey（个人词库与偏好已保留），随时可重新安装。"
+            } catch {
+                isUninstalling = false
+                checkStatus()
+                errorMessage = "卸载未完成：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    public func repairRegistration() {
+        guard !isBusy, !isPreview else { return }
+        isRepairing = true
+        activationHint = nil
+        Task {
+            let ok = await InputMethodRegistrar.refreshSystemAndReenable(
+                bundleURL: targetAppURL,
+                selectAfterRefresh: true
+            )
+            if FileManager.default.fileExists(atPath: targetAppURL.path),
+               !NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == Self.bundleID }) {
+                try? await launchInstalledApp(targetAppURL)
+            }
+            isRepairing = false
+            checkStatus()
+            activationHint = ok
+                ? "已刷新系统输入法服务，并切换到 AetherKey。"
+                : "已刷新系统输入法服务；若列表中仍未显示，请先在键盘设置中点「＋」添加一次。"
+        }
+    }
+
     public func autoEnableInputSource() {
         guard !isPreview else { return }
         activationHint = nil
-        let sources = TISCreateInputSourceList(nil, true)?.takeRetainedValue() as? [TISInputSource] ?? []
-        if let parent = sources.first(where: { sourceID($0) == Self.bundleID }), !isEnabled(parent) {
-            _ = TISEnableInputSource(parent)
+        Task {
+            _ = await InputMethodRegistrar.registerAndCycleEnable(
+                bundleURL: targetAppURL,
+                forceCycleEnable: false,
+                selectAfterEnable: true
+            )
+            checkStatus()
+            if !isCurrentSource {
+                activationHint = isSourceAdded
+                    ? "已添加。请在菜单栏输入法菜单中选择 AetherKey，或按 Control + 空格切换；若未显示可点击下方刷新服务。"
+                    : "macOS 尚未启用输入法。请打开键盘设置，按下方步骤添加；若搜索不到，点击下方刷新服务或注销后重试。"
+            }
         }
-        // Refresh after enabling the parent: macOS may only now expose its mode.
-        let refreshed = TISCreateInputSourceList(nil, true)?.takeRetainedValue() as? [TISInputSource] ?? []
-        if let mode = refreshed.first(where: { sourceID($0) == Self.bundleID + ".Hans" }) {
-            _ = TISSelectInputSource(mode)
-        }
-        checkStatus()
-        if !isCurrentSource {
-            activationHint = isSourceAdded
-                ? "已添加。请在菜单栏输入法菜单中选择 AetherKey，或按 Control + 空格切换。"
-                : "macOS 尚未启用输入法。请打开键盘设置，按下方步骤添加；若搜索不到，注销并重新登录后再次打开安装向导。"
+    }
+
+    private func launchInstalledApp(_ url: URL) async throws {
+        do {
+            try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        } catch {
+            try await Task.sleep(for: .milliseconds(400))
+            try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }
     }
 

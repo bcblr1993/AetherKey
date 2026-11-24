@@ -5,6 +5,8 @@ import AppKit
 public struct UpdateSettingsView: View {
     @ObservedObject private var updater = UpdateController.shared
     @ObservedObject private var login = LoginItemController.shared
+    @State private var isRefreshingInputMenu = false
+    @State private var inputMenuMessage = ""
     private var status: String {
         switch updater.state {
         case .notChecked: "随时检查，保持最新"
@@ -67,6 +69,30 @@ public struct UpdateSettingsView: View {
                     Text(login.message).font(.system(size: 11)).foregroundStyle(.secondary)
                     Spacer()
                     if login.needsApproval { Button("打开系统设置") { login.openSystemSettings() }.controlSize(.small) }
+                }
+                Divider()
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("系统输入法菜单维护").font(.system(size: 13, weight: .medium))
+                        Text(inputMenuMessage.isEmpty ? "如更新或重装后菜单栏未显示 AetherKey，可立即刷新系统输入法服务。" : inputMenuMessage)
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(isRefreshingInputMenu ? "正在刷新…" : "刷新系统输入法菜单") {
+                        guard !isRefreshingInputMenu else { return }
+                        isRefreshingInputMenu = true
+                        inputMenuMessage = ""
+                        Task { @MainActor in
+                            let ok = await InputMethodRegistrar.refreshSystemAndReenable(
+                                bundleURL: Bundle.main.bundleURL,
+                                selectAfterRefresh: true
+                            )
+                            isRefreshingInputMenu = false
+                            inputMenuMessage = ok ? "已刷新系统输入法菜单并确认 AetherKey 可用。" : "已尝试刷新，如仍未显示请在键盘设置中重新添加。"
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(isRefreshingInputMenu)
                 }
             }.padding(20)
           }

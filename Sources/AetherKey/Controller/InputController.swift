@@ -133,7 +133,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码"
             : "\(PinyinLexicon.entryCount.formatted()) 条拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.1") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -260,6 +260,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         prefsItem.target = self
         menu.addItem(prefsItem)
 
+        let refreshMenuItem = NSMenuItem(title: "刷新系统输入法菜单", action: #selector(menuRefreshSystemInputMenu), keyEquivalent: "")
+        refreshMenuItem.target = self
+        menu.addItem(refreshMenuItem)
+
         let updateItem = NSMenuItem(title: "检查更新…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
@@ -367,6 +371,21 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     @objc private func menuOpenPreferences() {
         Task { @MainActor in
             PreferencesWindowController.shared.showWindow()
+        }
+    }
+
+    @objc private func menuRefreshSystemInputMenu() {
+        Task { @MainActor in
+            let ok = await InputMethodRegistrar.refreshSystemAndReenable(
+                bundleURL: Bundle.main.bundleURL,
+                selectAfterRefresh: true
+            )
+            StatusHUDHolder.shared.show(
+                badge: ok ? "刷新" : "提醒",
+                title: ok ? "系统输入法菜单已刷新" : "已刷新，请在键盘设置确认输入法",
+                isAccent: ok,
+                anchorRect: nil
+            )
         }
     }
 

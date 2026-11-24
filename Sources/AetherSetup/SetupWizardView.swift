@@ -8,6 +8,7 @@ public struct SetupWizardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var testText = ""
     @State private var confirmedTyping = false
+    @State private var showUninstallConfirm = false
     @FocusState private var typingFocused: Bool
     private let accent = Color(red: 0.23, green: 0.43, blue: 0.90)
     private let sky = Color(red: 0.51, green: 0.72, blue: 1.0)
@@ -64,9 +65,15 @@ public struct SetupWizardView: View {
         .tint(accent)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: installer.currentStep)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: installer.installPhase)
-        .onReceive(timer) { _ in if !installer.isInstalling { installer.checkStatus() } }
+        .onReceive(timer) { _ in if !installer.isBusy { installer.checkStatus() } }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in installer.checkStatus() }
         .onChange(of: installer.isSourceAdded) { _, added in if !added { confirmedTyping = false } }
+        .confirmationDialog("确定要卸载 AetherKey 吗？", isPresented: $showUninstallConfirm, titleVisibility: .visible) {
+            Button("卸载 AetherKey", role: .destructive) { installer.uninstall() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将移除 ~/Library/Input Methods/AetherKey.app 并刷新系统输入法列表；你的个人词库、常用语和偏好设置会保留，随时可重新安装。")
+        }
     }
 
     private var appIcon: some View {
@@ -192,10 +199,28 @@ public struct SetupWizardView: View {
             if installer.isInstalling {
                 ProgressView(value: Double(installer.installPhase), total: 3).accessibilityLabel("安装进度")
                 Text("正在安装，请稍候…").font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if installer.isUninstalling {
+                ProgressView().controlSize(.small)
+                Text("正在卸载并刷新系统输入法列表…").font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if let error = installer.errorMessage { notice(error, symbol: "exclamationmark.circle", color: .orange) }
-            Label("安装只影响当前用户，无需输入管理员密码。", systemImage: "info.circle")
+            if let msg = installer.noticeMessage { notice(msg, symbol: "checkmark.circle", color: .green) }
+            if installer.isInstalled && !installer.isBusy {
+                HStack {
+                    Label("本机已安装 AetherKey，支持直接覆盖升级或卸载后重装。", systemImage: "checkmark.shield")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("卸载 AetherKey", role: .destructive) {
+                        showUninstallConfirm = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(.top, 2)
+            }
+            Label("安装到当前账户的 ~/Library/Input Methods（不在「应用程序」目录），无需管理员密码；覆盖安装或卸载重装均会自动刷新系统输入法菜单。", systemImage: "info.circle")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -239,6 +264,15 @@ public struct SetupWizardView: View {
                 instruction("2", "搜索 AetherKey，或在「简体中文」中找到它并添加。")
                 instruction("3", "在菜单栏选择 AetherKey，再回到这里继续。")
             }.padding(18).background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 16))
+            HStack {
+                Button(installer.isRepairing ? "正在刷新系统输入法服务…" : "菜单栏未出现？刷新系统输入法服务") {
+                    installer.repairRegistration()
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+                .disabled(installer.isBusy)
+                Spacer()
+            }
             if let hint = installer.activationHint { notice(hint, symbol: "info.circle", color: .secondary) }
         }
     }
@@ -311,12 +345,12 @@ public struct SetupWizardView: View {
         HStack(spacing: 14) {
             if installer.currentStep > 0 {
                 Button("上一步") { installer.currentStep -= 1 }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).disabled(installer.isInstalling)
+                    .buttonStyle(.plain).foregroundStyle(.secondary).disabled(installer.isBusy)
             } else {
                 Text("大约一分钟，开始新的输入体验").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
-            if installer.currentStep == 1 && installer.isInstalled && !installer.isInstalling {
+            if installer.currentStep == 1 && installer.isInstalled && !installer.isBusy {
                 Button("继续已有设置") { installer.currentStep = 2 }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
             }
@@ -330,7 +364,7 @@ public struct SetupWizardView: View {
                 }.font(.system(size: 13, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(installer.isInstalling || (installer.currentStep == 2 && (!installer.isInstalled || !installer.isSourceAdded || !installer.isCurrentSource)) || (installer.currentStep == 3 && (!installer.isSourceAdded || !confirmedTyping)))
+            .disabled(installer.isBusy || (installer.currentStep == 2 && (!installer.isInstalled || !installer.isSourceAdded || !installer.isCurrentSource)) || (installer.currentStep == 3 && (!installer.isSourceAdded || !confirmedTyping)))
             .keyboardShortcut(.defaultAction)
         }.padding(.horizontal, 36).padding(.vertical, 22)
             .background(.bar).overlay(alignment: .top) { Divider() }
