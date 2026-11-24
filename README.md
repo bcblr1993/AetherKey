@@ -135,3 +135,8 @@ xcodebuild -project AetherKey.xcodeproj -scheme AetherSetup -configuration Relea
 - **修复 macOS 27 `InputMethodConnectionName` 校验拒绝报错**：将 `Info.plist` 与 `main.swift` 的连接名统一为符合系统校验规范的 `com.aethernative.inputmethod.AetherKey_Connection`，消除首次切换进入应用时的 `Request for Endpoint Invalid` 报错。
 - **安装向导支持安全卸载、重复安装与一键修复**：`安装 AetherKey.app` 新增保留用户词库与偏好的「卸载 AetherKey」确认操作、安装前自动切离当前会话并清理孤立进程，以及「刷新系统输入法菜单」修复入口。
 - **菜单栏与设置自愈入口**：通用设置新增「在菜单栏常驻 AetherKey 快捷图标」开关；输入法菜单、独立状态栏菜单与「更新与启动」设置页均提供「刷新系统输入法菜单」按钮。
+
+
+### 安装指纹持久化与自动切换稳定性修复（2.0.2）
+
+- 修复主程序内 `UserDefaults(suiteName:)` 与当前 `CFBundleIdentifier` 相同返回 `nil` 导致安装包指纹未持久化、日常重启误触发系统输入法进程刷新的问题，并延长 `TIS` 启用后的自动切入等待窗口，保证安装/升级后直接自动切回 `AetherKey 拼音`。

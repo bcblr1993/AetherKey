@@ -4047,4 +4047,14 @@ extension CompositionEditingTests {
         reloaded.resetToDefaults()
         #expect(!reloaded.isAlwaysShowMenuBarIconEnabled)
     }
+
+    @Test("2.0.2: InputMethodRegistrar.sharedDefaults resolves non-nil even when hosted by bundleID")
+    func v202InputMethodRegistrarSharedDefaults() throws {
+        // Inside AetherKeyTests host app (bundleID == com.aethernative.inputmethod.AetherKey),
+        // raw UserDefaults(suiteName: bundleID) returns nil whereas sharedDefaults() resolves .standard.
+        let resolved = try #require(InputMethodRegistrar.sharedDefaults())
+        if Bundle.main.bundleIdentifier == InputMethodRegistrar.bundleID {
+            #expect(resolved === UserDefaults.standard)
+        }
+    }
 }

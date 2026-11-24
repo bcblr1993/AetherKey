@@ -68,22 +68,31 @@ public enum InputMethodRegistrar {
         return currentFingerprint != lastRecordedFingerprint
     }
 
+    /// Returns `.standard` when running inside `AetherKey.app` (where `UserDefaults(suiteName: bundleID)`
+    /// returns `nil`), and `UserDefaults(suiteName: bundleID)` from other processes such as `AetherSetup`.
+    public static func sharedDefaults() -> UserDefaults? {
+        if Bundle.main.bundleIdentifier == bundleID {
+            return .standard
+        }
+        return UserDefaults(suiteName: bundleID)
+    }
+
     public static func recordRegisteredFingerprint(
         _ fingerprint: String,
-        defaults: UserDefaults? = UserDefaults(suiteName: bundleID)
+        defaults: UserDefaults? = sharedDefaults()
     ) {
         defaults?.set(fingerprint, forKey: lastRegisteredFingerprintKey)
         defaults?.synchronize()
     }
 
     public static func lastRecordedFingerprint(
-        defaults: UserDefaults? = UserDefaults(suiteName: bundleID)
+        defaults: UserDefaults? = sharedDefaults()
     ) -> String? {
         defaults?.string(forKey: lastRegisteredFingerprintKey)
     }
 
     public static func clearRecordedFingerprint(
-        defaults: UserDefaults? = UserDefaults(suiteName: bundleID)
+        defaults: UserDefaults? = sharedDefaults()
     ) {
         defaults?.removeObject(forKey: lastRegisteredFingerprintKey)
         defaults?.synchronize()
@@ -347,6 +356,7 @@ public enum InputMethodRegistrar {
             }
         }
 
+        try? await Task.sleep(for: .milliseconds(350))
         let enabled = isAetherKeyEnabled()
         var selected = isAetherKeyCurrent()
         if selectAfterEnable {
@@ -357,13 +367,16 @@ public enum InputMethodRegistrar {
 
     @MainActor
     public static func selectAetherKeyWithRetry(
-        attempts: Int = 4,
-        delayMilliseconds: UInt64 = 300
+        attempts: Int = 6,
+        delayMilliseconds: UInt64 = 400
     ) async -> Bool {
         for _ in 0..<max(1, attempts) {
             try? await Task.sleep(for: .milliseconds(delayMilliseconds))
-            let sources = TISCreateInputSourceList(nil, true)?.takeRetainedValue() as? [TISInputSource] ?? []
-            if let mode = sources.first(where: { sourceID($0) == hansModeID }),
+            let enabledSources = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] ?? []
+            let allSources = enabledSources.contains(where: { sourceID($0) == hansModeID })
+                ? enabledSources
+                : (TISCreateInputSourceList(nil, true)?.takeRetainedValue() as? [TISInputSource] ?? [])
+            if let mode = allSources.first(where: { sourceID($0) == hansModeID }),
                TISSelectInputSource(mode) == noErr,
                isAetherKeyCurrent() {
                 return true
