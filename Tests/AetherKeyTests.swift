@@ -4057,4 +4057,39 @@ extension CompositionEditingTests {
             #expect(resolved === UserDefaults.standard)
         }
     }
+
+    @Test("2.0.3: Vector Kinetic Ribbon A icon, menubar.pdf MediaBox, and Info.plist vector icon keys")
+    func v203VectorMenuBarIconAndPlistConfig() throws {
+        let currentFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = currentFile.deletingLastPathComponent().deletingLastPathComponent()
+
+        let plistData = try Data(contentsOf: projectRoot.appendingPathComponent("Resources/Info.plist"))
+        let plist = try #require(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
+        #expect(plist["TISIconIsTemplate"] as? Bool == true)
+        #expect(plist["tsInputMethodIconFileKey"] as? String == "menubar.pdf")
+
+        let modeDict = try #require(plist["ComponentInputModeDict"] as? [String: Any])
+        let modeList = try #require(modeDict["tsInputModeListKey"] as? [String: Any])
+        let hansMode = try #require(modeList["com.aethernative.inputmethod.AetherKey.Hans"] as? [String: Any])
+        #expect(hansMode["tsInputModeMenuIconFileKey"] as? String == "menubar.pdf")
+        #expect(hansMode["tsInputModeAlternateMenuIconFileKey"] as? String == "menubar.pdf")
+        #expect(hansMode["tsInputModePaletteIconFileKey"] as? String == "menubar.pdf")
+
+        let pdfURL = projectRoot.appendingPathComponent("Resources/menubar.pdf")
+        #expect(FileManager.default.fileExists(atPath: pdfURL.path))
+        let pdfData = try Data(contentsOf: pdfURL)
+        #expect(pdfData.range(of: Data("/MediaBox [0 0 16 16]".utf8)) != nil)
+
+        let path = AetherMenuBarIcon.vectorPath
+        #expect(!path.isEmpty)
+        let bbox = path.boundingBoxOfPath
+        #expect(abs(bbox.minX - 2.0) < 0.1)
+        #expect(abs(bbox.minY - 2.0) < 0.1)
+        #expect(abs(bbox.width - 20.0) < 0.1)
+        #expect(abs(bbox.height - 20.0) < 0.1)
+
+        let image = AetherMenuBarIcon.image(size: 16)
+        #expect(image.size == NSSize(width: 16, height: 16))
+        #expect(image.isTemplate)
+    }
 }

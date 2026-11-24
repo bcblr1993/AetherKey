@@ -133,7 +133,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码"
             : "\(PinyinLexicon.entryCount.formatted()) 条拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.2") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.3") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )

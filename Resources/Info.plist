@@ -25,9 +25,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.2</string>
+    <string>2.0.3</string>
     <key>CFBundleVersion</key>
-    <string>2026112402</string>
+    <string>2026112403</string>
     <key>SUPublicEDKey</key>
     <string>+7eRUcpR39mrlReC1QPjuEEtIXSBq/qWj5hSzVqPJWQ=</string>
     <key>SUFeedURL</key>
@@ -64,7 +64,7 @@
         <string>Hans</string>
     </array>
     <key>tsInputMethodIconFileKey</key>
-    <string>AetherKeyMenu.tiff</string>
+    <string>menubar.pdf</string>
     <key>TICapsLockLanguageSwitchCapable</key>
     <true/>
     <key>ComponentInputModeDict</key>
@@ -85,10 +85,12 @@
                 <true/>
                 <key>tsInputModeDefaultStateKey</key>
                 <true/>
+                <key>tsInputModeAlternateMenuIconFileKey</key>
+                <string>menubar.pdf</string>
                 <key>tsInputModeMenuIconFileKey</key>
-                <string>AetherKeyMenu.tiff</string>
+                <string>menubar.pdf</string>
                 <key>tsInputModePaletteIconFileKey</key>
-                <string>AetherKeyMenu.tiff</string>
+                <string>menubar.pdf</string>
                 <key>tsInputMethodCharacterRepertoireKey</key>
                 <array>
                     <string>Hans</string>
