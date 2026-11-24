@@ -402,7 +402,7 @@ public enum InputMethodRegistrar {
         }
         let result = await registerAndCycleEnable(
             bundleURL: bundleURL,
-            forceCycleEnable: true,
+            forceCycleEnable: false,
             selectAfterEnable: selectAfterRefresh
         )
         return result.registered == noErr && result.enabled && (!selectAfterRefresh || result.selected)

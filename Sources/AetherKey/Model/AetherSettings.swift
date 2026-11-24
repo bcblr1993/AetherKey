@@ -176,7 +176,6 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         static let clipboardHistory = "aetherkey.settings.clipboardHistory"
         static let syncFolderPath = "aetherkey.settings.syncFolderPath"
         static let autoSync = "aetherkey.settings.autoSync"
-        static let alwaysShowMenuBarIcon = "aetherkey.settings.alwaysShowMenuBarIcon"
     }
     
     @Published public var isFourArrowSelectionEnabled: Bool {
@@ -312,10 +311,6 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         didSet { defaults.set(isAutoSyncEnabled, forKey: Keys.autoSync) }
     }
 
-    @Published public var isAlwaysShowMenuBarIconEnabled: Bool {
-        didSet { defaults.set(isAlwaysShowMenuBarIconEnabled, forKey: Keys.alwaysShowMenuBarIcon) }
-    }
-    
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.isFourArrowSelectionEnabled = defaults.bool(forKey: Keys.fourArrowSelection)
@@ -410,7 +405,6 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         self.isClipboardHistoryEnabled = defaults.bool(forKey: Keys.clipboardHistory)
         self.syncFolderPath = defaults.string(forKey: Keys.syncFolderPath) ?? ""
         self.isAutoSyncEnabled = defaults.bool(forKey: Keys.autoSync)
-        self.isAlwaysShowMenuBarIconEnabled = defaults.bool(forKey: Keys.alwaysShowMenuBarIcon)
     }
 
     public func appDefaultMode(for bundleIdentifier: String) -> AppDefaultInputMode? {
@@ -461,7 +455,6 @@ public final class AetherSettings: ObservableObject, @unchecked Sendable {
         isClipboardHistoryEnabled = true
         syncFolderPath = ""
         isAutoSyncEnabled = false
-        isAlwaysShowMenuBarIconEnabled = false
     }
 
     private static func clampedPageSize(_ value: Int) -> Int {

@@ -133,7 +133,7 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
             ? "五笔 86 · \(WubiEngine.shared.entryCount.formatted()) 条编码"
             : "\(PinyinLexicon.entryCount.formatted()) 条拼音词库"
         let statsItem = NSMenuItem(
-            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.3") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
+            title: "AetherKey \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.4") · \(dictionaryTitle) (已习得 \(UserLexicon.shared.learnedEntryCount) 词)",
             action: nil,
             keyEquivalent: ""
         )
@@ -260,6 +260,10 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
         prefsItem.target = self
         menu.addItem(prefsItem)
 
+        let syncItem = NSMenuItem(title: "立即同步词库与常用语", action: #selector(menuSyncLexiconNow), keyEquivalent: "")
+        syncItem.target = self
+        menu.addItem(syncItem)
+
         let refreshMenuItem = NSMenuItem(title: "刷新系统输入法菜单", action: #selector(menuRefreshSystemInputMenu), keyEquivalent: "")
         refreshMenuItem.target = self
         menu.addItem(refreshMenuItem)
@@ -371,6 +375,22 @@ public final class AetherInputController: IMKInputController, @unchecked Sendabl
     @objc private func menuOpenPreferences() {
         Task { @MainActor in
             PreferencesWindowController.shared.showWindow()
+        }
+    }
+
+    @objc private func menuSyncLexiconNow() {
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                _ = try LexiconSyncManager.shared.syncNow()
+                Task { @MainActor in
+                    StatusHUDHolder.shared.show(badge: "同步", title: "词库与常用语已同步", isAccent: true, anchorRect: nil)
+                }
+            } catch {
+                let message = error.localizedDescription
+                Task { @MainActor in
+                    StatusHUDHolder.shared.show(badge: "失败", title: message, isAccent: false, anchorRect: nil)
+                }
+            }
         }
     }
 

@@ -135,7 +135,7 @@ public final class InstallationManager: ObservableObject {
 
                 let cycleResult = await InputMethodRegistrar.registerAndCycleEnable(
                     bundleURL: destination,
-                    forceCycleEnable: true,
+                    forceCycleEnable: false,
                     selectAfterEnable: false
                 )
                 guard cycleResult.registered == noErr else {
@@ -221,7 +221,7 @@ public final class InstallationManager: ObservableObject {
             checkStatus()
             activationHint = ok
                 ? "已刷新系统输入法服务，并切换到 AetherKey。"
-                : "已刷新系统输入法服务；若列表中仍未显示，请先在键盘设置中点「＋」添加一次。"
+                : "已刷新系统输入法服务；若系统顶部输入法列表中仍未显示，请在键盘设置中点「−」移除 AetherKey 后再点「＋」添加一次即可。"
         }
     }
 
@@ -237,7 +237,7 @@ public final class InstallationManager: ObservableObject {
             checkStatus()
             if !isCurrentSource {
                 activationHint = isSourceAdded
-                    ? "已添加。请在菜单栏输入法菜单中选择 AetherKey，或按 Control + 空格切换；若未显示可点击下方刷新服务。"
+                    ? "已启用，请按 Control + 空格切换。若顶部输入法下拉列表中未出现，请在键盘设置移除后再添加一次「AetherKey 拼音」。"
                     : "macOS 尚未启用输入法。请打开键盘设置，按下方步骤添加；若搜索不到，点击下方刷新服务或注销后重试。"
             }
         }

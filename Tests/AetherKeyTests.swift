@@ -4031,21 +4031,42 @@ extension CompositionEditingTests {
         ))
     }
 
-    @Test("2.0.1: isAlwaysShowMenuBarIconEnabled defaults false, persists, and resets to false")
-    func v201AlwaysShowMenuBarIconSetting() throws {
+    @Test("2.0.4: Merged system Input Menu removes standalone status item and avoids TISDisableInputSource during upgrades/repairs")
+    @MainActor
+    func v204MergedSystemInputMenuAndNonDestructiveRefresh() throws {
         let suiteName = "com.aethernative.tests.menubar.\(UUID().uuidString)"
         let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = AetherSettings(defaults: isolatedDefaults)
-        #expect(!settings.isAlwaysShowMenuBarIconEnabled)
+        isolatedDefaults.set(true, forKey: "NSStatusItem VisibleCC Item-0")
+        isolatedDefaults.set(5680, forKey: "NSStatusItem Preferred Position Item-0")
+        isolatedDefaults.set(true, forKey: "NSStatusItem Visible Item-0")
+        isolatedDefaults.set(true, forKey: "aetherkey.settings.alwaysShowMenuBarIcon")
 
-        settings.isAlwaysShowMenuBarIconEnabled = true
-        let reloaded = AetherSettings(defaults: isolatedDefaults)
-        #expect(reloaded.isAlwaysShowMenuBarIconEnabled)
+        AppDelegate.clearLegacyStatusItemDefaults(defaults: isolatedDefaults)
 
-        reloaded.resetToDefaults()
-        #expect(!reloaded.isAlwaysShowMenuBarIconEnabled)
+        #expect(isolatedDefaults.object(forKey: "NSStatusItem VisibleCC Item-0") == nil)
+        #expect(isolatedDefaults.object(forKey: "NSStatusItem Preferred Position Item-0") == nil)
+        #expect(isolatedDefaults.object(forKey: "NSStatusItem Visible Item-0") == nil)
+        #expect(isolatedDefaults.object(forKey: "aetherkey.settings.alwaysShowMenuBarIcon") == nil)
+
+        let currentFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = currentFile.deletingLastPathComponent().deletingLastPathComponent()
+
+        let appDelegateSource = try String(contentsOf: projectRoot.appendingPathComponent("Sources/AetherKey/AppDelegate.swift"), encoding: .utf8)
+        #expect(!appDelegateSource.contains("NSStatusBar.system.statusItem"))
+        #expect(appDelegateSource.contains("forceCycleEnable: false"))
+        #expect(!appDelegateSource.contains("forceCycleEnable: true"))
+
+        let registrarSource = try String(contentsOf: projectRoot.appendingPathComponent("Sources/AetherKey/Engine/InputMethodRegistrar.swift"), encoding: .utf8)
+        #expect(!registrarSource.contains("forceCycleEnable: true"))
+
+        let setupSource = try String(contentsOf: projectRoot.appendingPathComponent("Sources/AetherSetup/InstallationManager.swift"), encoding: .utf8)
+        #expect(!setupSource.contains("forceCycleEnable: true"))
+
+        let controllerSource = try String(contentsOf: projectRoot.appendingPathComponent("Sources/AetherKey/Controller/InputController.swift"), encoding: .utf8)
+        #expect(controllerSource.contains("立即同步词库与常用语"))
+        #expect(controllerSource.contains("刷新系统输入法菜单"))
     }
 
     @Test("2.0.2: InputMethodRegistrar.sharedDefaults resolves non-nil even when hosted by bundleID")
